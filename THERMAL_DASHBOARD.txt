@@ -1,0 +1,94 @@
+╔════════════════════════════════════════════════════════════════╗
+║         THERMAL MANAGEMENT DASHBOARD - USER GUIDE              ║
+╚════════════════════════════════════════════════════════════════╝
+
+LAUNCH:
+  ./thermal
+
+FEATURES:
+
+  ┌─ LEFT PANEL ────────────────────────────────────────────┐
+  │                                                          │
+  │  ▪ Real-time temperature monitoring                     │
+  │    - ACPI (case ambient temperature)                    │
+  │    - CPU package temperature                            │
+  │    - Auto-updates every 2 seconds                       │
+  │                                                          │
+  │  ▪ System Status Display                                │
+  │    - Current heating state (HEATING/IDLE)               │
+  │    - Service status (active/inactive)                   │
+  │    - Dashboard uptime                                   │
+  │    - Manual override indicator                          │
+  │                                                          │
+  │  ▪ Manual Controls (Buttons)                            │
+  │    🔥 FORCE HEATING ON  - Override auto control         │
+  │    ❄️  FORCE HEATING OFF - Disable heating              │
+  │    🔄 RESTART SERVICE   - Restart thermal manager       │
+  │    📊 VIEW FULL LOGS    - Open complete log file        │
+  │                                                          │
+  └──────────────────────────────────────────────────────────┘
+
+  ┌─ RIGHT PANEL ───────────────────────────────────────────┐
+  │                                                          │
+  │  ▪ Live Activity Log                                    │
+  │    - Last 50 lines from thermal_manager.log             │
+  │    - Shows heating events, temp changes                 │
+  │    - Manual action confirmations                        │
+  │    - Auto-scrolling log viewer                          │
+  │                                                          │
+  └──────────────────────────────────────────────────────────┘
+
+KEYBOARD SHORTCUTS:
+
+  q         Quit dashboard
+  r         Refresh all data
+  h         Toggle heating on/off
+  s         Restart thermal service
+
+  ↑/↓       Scroll left panel up/down (use for controls)
+  Tab       Move between controls
+  Enter     Activate focused button
+
+  Mouse     Scroll with mouse wheel or click scrollbar
+
+COLOR CODING:
+
+  🟢 Green   = Normal / Active / Above freezing
+  🔴 Red     = Heating active / Critical / Below freezing
+  🟡 Yellow  = Warning / Manual override active
+  🔵 Blue    = Cooling / Idle
+  🔵 Cyan    = Headers and borders
+
+TEMPERATURE THRESHOLDS:
+
+  Heating triggers:  Below 0°C (32°F)
+  Heating stops:     Above 5°C (41°F)
+
+TIPS:
+
+  • Manual override persists until service restart
+  • Service automatically resumes normal operation after restart
+  • Dashboard doesn't need to run for thermal manager to work
+  • Use this for monitoring and manual control only
+  • Press 'q' anytime to exit safely
+
+TROUBLESHOOTING:
+
+  If temperatures show 0.0°C:
+    - Check thermal sensor permissions
+    - Verify /sys/class/thermal/ exists
+
+  If service shows "unknown":
+    - Run: ./thermal_control.sh status
+    - Service may need to be started
+
+  If buttons don't work:
+    - Check sudo permissions
+    - Verify thermal manager is installed
+
+═══════════════════════════════════════════════════════════════
+
+For service management, use: ./thermal_control.sh
+For logs outside dashboard: tail -f thermal_manager.log
+
+═══════════════════════════════════════════════════════════════

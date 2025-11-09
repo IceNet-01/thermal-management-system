@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+
+# Log files
+*.log
+thermal_manager.log
+
+# Temporary files
+/tmp/
+*.tmp
+thermal_override
+
+# System files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Archives
+*.tar.gz
+*.zip
+heater_project_*/
+
+# Local testing
+test_output/

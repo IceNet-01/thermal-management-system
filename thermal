@@ -1,0 +1,4 @@
+#!/bin/bash
+# Thermal Dashboard Launcher
+
+python3 /home/mesh/thermal_dashboard.py

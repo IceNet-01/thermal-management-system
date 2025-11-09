@@ -1,0 +1,97 @@
+╔════════════════════════════════════════════════════════════════╗
+║                    HEATER PROJECT #heater                      ║
+║              QUICK REFERENCE CARD                              ║
+╚════════════════════════════════════════════════════════════════╝
+
+┌─ EXPORT TO ANOTHER SYSTEM ────────────────────────────────────┐
+│                                                                │
+│  1. Create export package:                                    │
+│     ./heater_export.sh                                        │
+│                                                                │
+│  2. Transfer to new system:                                   │
+│     scp heater_project_*.tar.gz user@newhost:~                │
+│                                                                │
+│  3. On new system - extract and install:                      │
+│     tar -xzf heater_project_*.tar.gz                          │
+│     cd heater_project                                         │
+│     ./INSTALL.sh                                              │
+│                                                                │
+│  Done! System is now protected.                               │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+
+┌─ DAILY OPERATIONS ────────────────────────────────────────────┐
+│                                                                │
+│  Launch GUI:           ./thermal                              │
+│  Check status:         ./thermal_control.sh status            │
+│  View logs:            ./thermal_control.sh logs              │
+│  Restart service:      ./thermal_control.sh restart           │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+
+┌─ KEY FILES ───────────────────────────────────────────────────┐
+│                                                                │
+│  thermal_manager.py         - Core heating service            │
+│  thermal_dashboard.py       - GUI dashboard                   │
+│  thermal_control.sh         - Service management              │
+│  heater_export.sh          - Export for transfer             │
+│  HEATER_PROJECT_README.md  - Complete documentation          │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+
+┌─ SYSTEM BEHAVIOR ─────────────────────────────────────────────┐
+│                                                                │
+│  Heating starts:  When temp < 0°C (32°F)                      │
+│  Heating stops:   When temp > 5°C (41°F)                      │
+│  Check interval:  Every 10 seconds                            │
+│  CPU usage:       70% when heating                            │
+│  Sensor:          ACPI (case ambient, not CPU)                │
+│                                                                │
+│  Expected Performance:                                        │
+│    Outside temp: 28°F → Case temp: ~45-50°F                   │
+│    Heating increase: +15-17°C (+27-30°F)                      │
+│    Power usage: ~18-24W total                                 │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+
+┌─ TROUBLESHOOTING ─────────────────────────────────────────────┐
+│                                                                │
+│  Service not running:                                         │
+│    sudo systemctl status thermal-manager.service              │
+│    sudo journalctl -u thermal-manager.service -n 50           │
+│                                                                │
+│  Check temperatures manually:                                 │
+│    cat /sys/class/thermal/thermal_zone0/temp   # ACPI (/1000) │
+│    cat /sys/class/thermal/thermal_zone1/temp   # CPU (/1000)  │
+│                                                                │
+│  GUI won't start:                                             │
+│    pip3 install textual --break-system-packages --upgrade     │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+
+┌─ WHAT RUNS WHERE ─────────────────────────────────────────────┐
+│                                                                │
+│  Background Service (always running):                         │
+│    thermal-manager.service → thermal_manager.py               │
+│    ✓ Auto-starts on boot                                      │
+│    ✓ Monitors temperature 24/7                                │
+│    ✓ Heats automatically when cold                            │
+│    ✓ Independent of GUI                                       │
+│                                                                │
+│  GUI Dashboard (optional):                                    │
+│    ./thermal → thermal_dashboard.py                           │
+│    ✓ Just for monitoring and manual control                   │
+│    ✓ Can be closed anytime                                    │
+│    ✓ Service keeps running when GUI is closed                 │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════
+
+Tag: #heater
+Project: Thermal Management System for Remote Equipment
+Platform: Zima Board + Meshtastic Radios
+Location: 20ft tower, Larimore ND, Pelican case
+Purpose: Prevent freezing damage via automatic CPU heating
+
+═══════════════════════════════════════════════════════════════
