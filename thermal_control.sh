@@ -66,9 +66,14 @@ case "$1" in
         sudo python3 "${SCRIPT_DIR}/thermal_manager.py"
         ;;
 
+    diagnose)
+        echo "Running diagnostics..."
+        "${SCRIPT_DIR}/diagnose.sh"
+        ;;
+
     *)
         echo "Thermal Manager Control"
-        echo "Usage: $0 {start|stop|restart|status|logs|follow|test}"
+        echo "Usage: $0 {start|stop|restart|status|logs|follow|test|diagnose}"
         echo ""
         echo "  start     - Start the service"
         echo "  stop      - Stop the service"
@@ -77,10 +82,12 @@ case "$1" in
         echo "  logs      - View recent logs"
         echo "  follow    - Follow logs in real-time"
         echo "  test      - Run in foreground for testing"
+        echo "  diagnose  - Run system diagnostics"
         echo ""
         echo "For installation, use: ./install.sh"
         echo "For updates, use: ./update.sh"
         echo "For removal, use: ./uninstall.sh"
+        echo "For troubleshooting, use: ./diagnose.sh"
         exit 1
         ;;
 esac

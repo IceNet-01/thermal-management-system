@@ -249,6 +249,7 @@ thermal-management-system/
 ├── install.sh                        # 🆕 Easy installation script (ONE COMMAND!)
 ├── update.sh                         # 🆕 Easy update script (pull & restart)
 ├── uninstall.sh                      # 🆕 Complete uninstaller (handles old versions)
+├── diagnose.sh                       # 🆕 Diagnostic tool (troubleshooting)
 ├── thermal_manager.py                # Main service daemon
 ├── thermal_dashboard.py              # GUI dashboard (Textual)
 ├── ambient_temp_estimator.py         # Ambient temperature estimation module
@@ -284,23 +285,53 @@ thermal-management-system/
 
 ## Troubleshooting
 
-### Service won't start
+### Run Diagnostics First
+
+If something isn't working, start here:
+
 ```bash
-sudo journalctl -u thermal-manager.service -n 50
+./diagnose.sh
+# or
+./thermal_control.sh diagnose
 ```
 
-### Temperatures show 0.0°C
+The diagnostic tool checks:
+- Python installation and packages
+- Thermal sensor accessibility
+- Service status and logs
+- File permissions
+- Installation completeness
+
+### Common Issues
+
+**Service won't start:**
+```bash
+# Check detailed logs
+sudo journalctl -u thermal-manager.service -n 50
+
+# Run diagnostic
+./diagnose.sh
+```
+
+**Python packages not found:**
+- Packages must be installed system-wide (for root user)
+- Run: `sudo pip3 install textual`
+- Verify: `sudo python3 -c "import textual"`
+
+**Temperatures show 0.0°C or sensor errors:**
 - Check thermal sensor permissions
 - Verify `/sys/class/thermal/thermal_zone*/temp` exists
-- Run service as root
+- Service must run as root to access sensors
+- Some systems may not have ACPI thermal zones
 
-### Heating not activating
+**Heating not activating:**
 - Check actual temperature vs threshold
 - Look for manual override file: `/tmp/thermal_override`
 - Review logs: `./thermal_control.sh logs`
 
-### GUI not launching
+**GUI not launching:**
 ```bash
+# Install for current user (dashboard runs as user, not root)
 pip3 install textual --break-system-packages --upgrade
 ```
 
