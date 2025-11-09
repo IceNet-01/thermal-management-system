@@ -35,7 +35,10 @@ try:
     from ambient_temp_estimator import (
         AmbientTempEstimator,
         get_cpu_temperature,
+        get_acpi_ambient_temperature,
         get_power_consumption,
+        get_weather_ambient_temperature,
+        auto_calibrate_with_stress,
         log_estimation
     )
 except ImportError:
@@ -414,6 +417,133 @@ def cooldown_mode():
         print(f"\n✗ Curve fitting failed: {e}")
 
 
+def auto_calibration_mode(use_acpi: bool = True, use_weather: bool = False,
+                         latitude: float = None, longitude: float = None,
+                         api_key: str = None):
+    """
+    Automatic calibration mode - no thermometer required!
+
+    Automatically calibrates by:
+    1. Getting ambient temp from ACPI sensor or weather API
+    2. Varying CPU load (0% to 100%)
+    3. Collecting samples at each load level
+    4. Computing R_th and b via regression
+
+    Args:
+        use_acpi: Use ACPI thermal sensor for ambient reference
+        use_weather: Use weather API for ambient reference
+        latitude: Location latitude (for weather API)
+        longitude: Location longitude (for weather API)
+        api_key: OpenWeatherMap API key (optional)
+    """
+    print("\n" + "=" * 70)
+    print("AUTO-CALIBRATION MODE - No Thermometer Required!")
+    print("=" * 70)
+    print("\nThis mode automatically calibrates without manual measurements.")
+    print("It will:")
+    print("  1. Obtain ambient temperature from ACPI sensor or weather API")
+    print("  2. Automatically vary CPU load from 0% to 100%")
+    print("  3. Collect temperature/power samples at each load level")
+    print("  4. Compute calibration constants via linear regression")
+    print("\n⚠ WARNING: This will stress your CPU for ~20-30 minutes!")
+    print("           Make sure:")
+    print("           - Device is in a stable environment (no rapid temp changes)")
+    print("           - Adequate cooling/ventilation")
+    print("           - No critical tasks running")
+
+    # Determine ambient source
+    if use_weather:
+        ambient_source = "weather"
+    elif use_acpi:
+        ambient_source = "acpi"
+    else:
+        ambient_source = "both"
+
+    print(f"\nAmbient temperature source: {ambient_source}")
+
+    # Confirm before proceeding
+    response = input("\nContinue with auto-calibration? (yes/no): ")
+    if response.lower() not in ['yes', 'y']:
+        print("Auto-calibration cancelled.")
+        return
+
+    estimator = AmbientTempEstimator()
+
+    try:
+        # Run auto-calibration
+        results = auto_calibrate_with_stress(
+            estimator=estimator,
+            ambient_source=ambient_source,
+            latitude=latitude,
+            longitude=longitude,
+            api_key=api_key,
+            num_samples=8,
+            verbose=True
+        )
+
+        print("\n" + "=" * 70)
+        print("AUTO-CALIBRATION COMPLETE!")
+        print("=" * 70)
+        print("\nYou can now use --estimate or --monitor to get ambient temperature")
+        print("without any external thermometer.")
+
+    except KeyboardInterrupt:
+        print("\n\nAuto-calibration interrupted by user (Ctrl+C)")
+        print("Partial calibration not saved.")
+    except Exception as e:
+        print(f"\n✗ Auto-calibration failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def test_ambient_sources():
+    """Test available ambient temperature sources."""
+    print("\n" + "=" * 70)
+    print("TESTING AMBIENT TEMPERATURE SOURCES")
+    print("=" * 70)
+
+    # Test ACPI sensor
+    print("\n1. ACPI Thermal Sensor")
+    print("-" * 40)
+    try:
+        temp = get_acpi_ambient_temperature()
+        print(f"✓ ACPI sensor available")
+        print(f"  Temperature: {temp:.2f}°C ({temp * 9/5 + 32:.1f}°F)")
+    except Exception as e:
+        print(f"✗ ACPI sensor not available: {e}")
+
+    # Test weather API (wttr.in - no config needed)
+    print("\n2. Weather API (wttr.in - IP-based)")
+    print("-" * 40)
+    try:
+        temp, source = get_weather_ambient_temperature()
+        print(f"✓ Weather API available")
+        print(f"  Source: {source}")
+        print(f"  Temperature: {temp:.2f}°C ({temp * 9/5 + 32:.1f}°F)")
+    except Exception as e:
+        print(f"✗ Weather API not available: {e}")
+
+    # Test CPU sensor (for comparison)
+    print("\n3. CPU Package Temperature (for reference)")
+    print("-" * 40)
+    try:
+        temp = get_cpu_temperature()
+        print(f"✓ CPU sensor available")
+        print(f"  Temperature: {temp:.2f}°C ({temp * 9/5 + 32:.1f}°F)")
+        print(f"  Note: CPU temp includes self-heating, not true ambient")
+    except Exception as e:
+        print(f"✗ CPU sensor not available: {e}")
+
+    # Recommendations
+    print("\n" + "=" * 70)
+    print("RECOMMENDATIONS")
+    print("=" * 70)
+    print("\nFor auto-calibration, use:")
+    print("  • ACPI sensor (--auto-calibrate) - Most accurate for local conditions")
+    print("  • Weather API (--auto-calibrate-weather) - Good for verification")
+    print("\nACPI sensor is preferred as it measures actual device environment.")
+
+
 def main():
     """Main entry point with CLI argument parsing."""
     parser = argparse.ArgumentParser(
@@ -421,7 +551,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Interactive calibration mode
+  # AUTO-CALIBRATION (no thermometer required!)
+  python3 ambient_temp_example.py --auto-calibrate          # Uses ACPI sensor
+  python3 ambient_temp_example.py --auto-calibrate-weather  # Uses weather API
+  python3 ambient_temp_example.py --test-sources            # Test what's available
+
+  # Interactive calibration mode (requires thermometer)
   python3 ambient_temp_example.py --calibrate
 
   # Example calibration with synthetic data
@@ -438,8 +573,20 @@ Examples:
         """
     )
 
+    parser.add_argument('--auto-calibrate', action='store_true',
+                       help='AUTO-CALIBRATION using ACPI sensor (no thermometer needed!)')
+    parser.add_argument('--auto-calibrate-weather', action='store_true',
+                       help='AUTO-CALIBRATION using weather API (no thermometer needed!)')
+    parser.add_argument('--test-sources', action='store_true',
+                       help='Test available ambient temperature sources')
+    parser.add_argument('--latitude', type=float, default=None,
+                       help='Latitude for weather API (e.g., 46.8772 for North Dakota)')
+    parser.add_argument('--longitude', type=float, default=None,
+                       help='Longitude for weather API (e.g., -96.7898 for North Dakota)')
+    parser.add_argument('--api-key', type=str, default=None,
+                       help='OpenWeatherMap API key (optional, for weather mode)')
     parser.add_argument('--calibrate', action='store_true',
-                       help='Interactive calibration mode')
+                       help='Interactive calibration mode (requires thermometer)')
     parser.add_argument('--calibrate-example', action='store_true',
                        help='Example calibration with synthetic data')
     parser.add_argument('--estimate', action='store_true',
@@ -458,7 +605,19 @@ Examples:
     args = parser.parse_args()
 
     # Execute requested mode
-    if args.calibrate:
+    if args.auto_calibrate:
+        auto_calibration_mode(use_acpi=True, use_weather=False)
+    elif args.auto_calibrate_weather:
+        auto_calibration_mode(
+            use_acpi=False,
+            use_weather=True,
+            latitude=args.latitude,
+            longitude=args.longitude,
+            api_key=args.api_key
+        )
+    elif args.test_sources:
+        test_ambient_sources()
+    elif args.calibrate:
         calibration_mode_interactive()
     elif args.calibrate_example:
         calibration_mode_example()

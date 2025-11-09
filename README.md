@@ -157,26 +157,48 @@ Originally designed for:
 
 ## Ambient Temperature Estimation
 
-**NEW: Estimate ambient temperature without a dedicated sensor!**
+**NEW: Estimate ambient temperature without a dedicated sensor - NO THERMOMETER REQUIRED!**
 
 The system now includes a physics-based ambient temperature estimator that uses CPU temperature and power consumption to calculate the surrounding air temperature with ±2-4°C accuracy.
+
+### Auto-Calibration - Zero Manual Work!
+
+The estimator features **automatic calibration** using your existing ACPI sensor or weather APIs. No thermometer, no manual measurements, just one command:
+
+```bash
+# Install numpy (required)
+pip3 install numpy --break-system-packages
+
+# Run auto-calibration (takes ~25 minutes, hands-off)
+python3 ambient_temp_example.py --auto-calibrate
+
+# That's it! Now estimate ambient anytime:
+python3 ambient_temp_example.py --estimate
+```
 
 ### How It Works
 
 Uses thermal resistance model: `T_amb = T_cpu - (P × R_th + b)`
 
-- One-time calibration with 5-10 samples
-- Real-time estimation using only CPU temp and power data
-- Perfect for remote installations without ambient sensors
+**Auto-calibration process:**
+1. Uses existing ACPI sensor (thermal_zone0) as ambient reference
+2. Automatically varies CPU load from 0% to 100%
+3. Collects samples at different load levels
+4. Computes calibration constants via linear regression
+5. Saves calibration permanently
+
+**Alternative methods:**
+- Weather API calibration (for outdoor installations or verification)
+- Manual calibration with thermometer (for highest accuracy)
 
 ### Quick Start
 
 ```bash
-# Install numpy for calibration
-pip3 install numpy --break-system-packages
+# AUTO-CALIBRATION (recommended!)
+python3 ambient_temp_example.py --auto-calibrate
 
-# Run interactive calibration (needs thermometer)
-python3 ambient_temp_example.py --calibrate
+# Test available temperature sources
+python3 ambient_temp_example.py --test-sources
 
 # Get current ambient estimate
 python3 ambient_temp_example.py --estimate

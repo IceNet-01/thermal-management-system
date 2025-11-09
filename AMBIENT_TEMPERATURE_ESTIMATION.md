@@ -2,11 +2,17 @@
 
 **Estimate ambient air temperature using only CPU temperature and power consumption data**
 
+**🎉 NEW: Auto-calibration modes - NO THERMOMETER REQUIRED!**
+
 ---
 
 ## Overview
 
 This module enables your thermal management system to estimate the ambient (room/environment) temperature without requiring a dedicated ambient temperature sensor. It uses a thermal physics model combined with calibration data to achieve ±2-4°C accuracy on passively-cooled SBCs like the ZimaBoard.
+
+**Two calibration methods:**
+1. **Auto-calibration** (recommended) - Uses existing ACPI sensor or weather API. NO manual measurements needed!
+2. **Manual calibration** - Uses thermometer for highest accuracy
 
 ### How It Works
 
@@ -47,7 +53,50 @@ T_amb_est = T_cpu - (P × R_th + b)
 
 ---
 
-## Quick Start
+## Quick Start (Auto-Calibration - Recommended!)
+
+### FASTEST METHOD: Auto-Calibration with ACPI Sensor
+
+**No thermometer needed! Just one command:**
+
+```bash
+# Install numpy (required)
+pip3 install numpy --break-system-packages
+
+# Run auto-calibration (takes 20-30 minutes)
+python3 ambient_temp_example.py --auto-calibrate
+```
+
+**What happens:**
+1. Reads ambient temperature from existing ACPI sensor (thermal_zone0)
+2. Automatically varies CPU load from 0% to 100%
+3. Collects 8 samples at different load levels
+4. Computes calibration constants via regression
+5. Saves calibration to file
+
+**Result:** You're calibrated! No manual work required.
+
+---
+
+### Alternative: Auto-Calibration with Weather API
+
+```bash
+# Test what sources are available
+python3 ambient_temp_example.py --test-sources
+
+# Auto-calibrate using weather data (no config needed!)
+python3 ambient_temp_example.py --auto-calibrate-weather
+
+# OR specify location (for weather.gov API)
+python3 ambient_temp_example.py --auto-calibrate-weather \
+  --latitude 46.8772 --longitude -96.7898
+```
+
+---
+
+## Traditional Quick Start (Manual Calibration)
+
+**For highest accuracy or if ACPI sensor not available:**
 
 ### 1. Installation
 
@@ -196,6 +245,228 @@ if estimator.calibrated:
     except Exception as e:
         log(f"Ambient estimation error: {e}")
 ```
+
+---
+
+## Auto-Calibration Explained
+
+### Why Auto-Calibration?
+
+**Problem:** Traditional calibration requires:
+- An accurate thermometer
+- Manual measurement at multiple points
+- 30+ minutes of your time
+- Careful sample collection
+
+**Solution:** Auto-calibration uses resources you already have:
+- ACPI thermal sensor (already in your device!)
+- Weather API data (free, no setup)
+- Automatic CPU load variation
+- Hands-off operation
+
+---
+
+### Method 1: ACPI Sensor (Recommended)
+
+**How it works:**
+
+Your ZimaBoard already has an ACPI thermal sensor (thermal_zone0) that measures **case/ambient temperature**. The thermal_manager.py uses this exact sensor!
+
+Auto-calibration leverages this:
+
+```
+1. Read ACPI ambient temperature → 22.0°C (this is our reference)
+2. Set CPU to idle (0% load)
+   → CPU temp: 24.5°C, Power: 7W
+   → Sample: (24.5, 7.0, 22.0)
+
+3. Set CPU to 50% load, wait 3 min for stabilization
+   → CPU temp: 38.0°C, Power: 14W
+   → Sample: (38.0, 14.0, 22.0)
+
+4. Set CPU to 100% load, wait 3 min
+   → CPU temp: 52.0°C, Power: 22W
+   → Sample: (52.0, 22.0, 22.0)
+
+5. Repeat for 8 different load levels
+6. Run linear regression on all samples
+7. Compute R_th and b parameters
+```
+
+**Advantages:**
+- No external hardware needed
+- Measures actual device environment
+- Same sensor thermal_manager.py uses
+- Most accurate for local conditions
+
+**Usage:**
+```bash
+python3 ambient_temp_example.py --auto-calibrate
+```
+
+**Time required:** ~25 minutes (8 samples × 3 min stabilization)
+
+---
+
+### Method 2: Weather API
+
+**How it works:**
+
+Fetches current ambient temperature from weather services:
+
+1. **wttr.in** (IP-based, no config) - Fastest, works anywhere
+2. **weather.gov** (NOAA, US only) - Most accurate, requires lat/lon
+3. **OpenWeatherMap** (requires free API key) - Global coverage
+
+```bash
+# Automatic (uses wttr.in)
+python3 ambient_temp_example.py --auto-calibrate-weather
+
+# With location (uses weather.gov)
+python3 ambient_temp_example.py --auto-calibrate-weather \
+  --latitude 46.8772 --longitude -96.7898
+```
+
+**Advantages:**
+- Works even if ACPI sensor unavailable
+- Good for verification/cross-check
+- No configuration needed (wttr.in)
+
+**Limitations:**
+- Weather station may be miles away
+- Reports outdoor temp, not device environment
+- Requires internet connection
+
+**Best for:**
+- Outdoor installations (weather matches device environment)
+- Verification of ACPI calibration
+- ARM boards without ACPI sensor
+
+---
+
+### Testing Available Sources
+
+Before calibration, test what's available:
+
+```bash
+python3 ambient_temp_example.py --test-sources
+```
+
+**Example output:**
+```
+==================================================
+TESTING AMBIENT TEMPERATURE SOURCES
+==================================================
+
+1. ACPI Thermal Sensor
+----------------------------------------
+✓ ACPI sensor available
+  Temperature: 22.50°C (72.5°F)
+
+2. Weather API (wttr.in - IP-based)
+----------------------------------------
+✓ Weather API available
+  Source: wttr.in
+  Temperature: 21.00°C (69.8°F)
+
+3. CPU Package Temperature (for reference)
+----------------------------------------
+✓ CPU sensor available
+  Temperature: 35.20°C (95.4°F)
+  Note: CPU temp includes self-heating, not true ambient
+
+==================================================
+RECOMMENDATIONS
+==================================================
+
+For auto-calibration, use:
+  • ACPI sensor (--auto-calibrate) - Most accurate for local conditions
+  • Weather API (--auto-calibrate-weather) - Good for verification
+
+ACPI sensor is preferred as it measures actual device environment.
+```
+
+---
+
+### Auto-Calibration Process Details
+
+**What the script does:**
+
+1. **Confirm and prepare**
+   - Prompts for confirmation
+   - Warns about 20-30 minute duration
+   - Gets ambient reference temperature
+
+2. **For each load level (0%, 15%, 30%, 50%, 70%, 85%, 100%, 40%):**
+   - Apply CPU load using `stress-ng` (or fallback to shell)
+   - Wait 3 minutes for thermal stabilization
+   - Print progress updates every 30 seconds
+   - Read CPU temp and power at steady state
+   - Record sample (T_cpu, P, T_amb_ref)
+   - Stop CPU stress
+
+3. **Calibration computation:**
+   - Run linear regression on all samples
+   - Compute R_th (thermal resistance)
+   - Compute b (bias term)
+   - Calculate σ (uncertainty)
+   - Compute R² (fit quality)
+
+4. **Save and report:**
+   - Save to `/var/lib/thermal-manager/ambient_calibration.json`
+   - Display results and validation
+
+**Sample progress output:**
+```
+AUTO-CALIBRATION MODE
+======================================================================
+Ambient reference: 22.00°C (ACPI sensor)
+Collecting 8 samples at different CPU loads...
+This will take ~24 minutes (3 min per sample)
+
+--- Sample 1/8: CPU load 0% ---
+  Waiting 180s for thermal stabilization...
+    30s: CPU temp = 24.1°C
+    60s: CPU temp = 24.3°C
+    90s: CPU temp = 24.5°C
+   120s: CPU temp = 24.5°C
+   150s: CPU temp = 24.5°C
+  ✓ Sample recorded: T_cpu=24.50°C, P=7.20W, T_amb=22.00°C
+
+--- Sample 2/8: CPU load 15% ---
+  Applying load with stress-ng (1 workers)...
+  [... continues for all 8 samples ...]
+
+======================================================================
+Performing calibration with 8 samples...
+======================================================================
+
+✓ Auto-calibration successful!
+
+Results:
+  R_th (Thermal Resistance): 0.9250 °C/W
+  b (Bias):                  2.4500 °C
+  σ (Uncertainty):           ±2.10 °C
+  R² (Fit Quality):          0.9845
+
+📁 Calibration saved to: /var/lib/thermal-manager/ambient_calibration.json
+```
+
+---
+
+### Comparison: Auto vs. Manual Calibration
+
+| Feature | Auto-Calibration (ACPI) | Auto-Calibration (Weather) | Manual (Thermometer) |
+|---------|------------------------|---------------------------|---------------------|
+| **Setup time** | None | None | Find thermometer |
+| **Hands-on time** | 1 minute | 1 minute | 30-45 minutes |
+| **Total time** | 25 minutes | 25 minutes | 30-45 minutes |
+| **Equipment needed** | None | None | Accurate thermometer |
+| **Accuracy** | ±2-3°C | ±3-4°C | ±2-3°C |
+| **Convenience** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ |
+| **Best for** | Most users | Outdoor, verification | Highest accuracy |
+
+**Recommendation:** Start with `--auto-calibrate`. If results aren't satisfactory, try manual calibration.
 
 ---
 

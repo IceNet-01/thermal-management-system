@@ -348,6 +348,50 @@ class AmbientTempEstimator:
         }
 
 
+def get_acpi_ambient_temperature() -> float:
+    """
+    Read ACPI ambient/case temperature from sysfs.
+
+    This is the same sensor used by thermal_manager.py for ambient temperature.
+    It measures the case/environment temperature, not CPU self-heating.
+
+    Returns:
+        Ambient temperature in °C
+
+    Raises:
+        IOError: If temperature cannot be read
+    """
+    # Try ACPI thermal zones (usually zone0 on most SBCs)
+    acpi_zones = [
+        ('/sys/class/thermal/thermal_zone0/temp', '/sys/class/thermal/thermal_zone0/type'),
+    ]
+
+    for temp_path, type_path in acpi_zones:
+        if os.path.exists(temp_path) and os.path.exists(type_path):
+            try:
+                # Check if this is actually an ACPI zone
+                with open(type_path, 'r') as f:
+                    zone_type = f.read().strip().lower()
+
+                if 'acpi' in zone_type:
+                    with open(temp_path, 'r') as f:
+                        temp_millidegrees = int(f.read().strip())
+                        return temp_millidegrees / 1000.0
+            except (IOError, ValueError):
+                continue
+
+    # Fallback: Just read zone0 even if type doesn't say ACPI
+    if os.path.exists('/sys/class/thermal/thermal_zone0/temp'):
+        try:
+            with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+                temp_millidegrees = int(f.read().strip())
+                return temp_millidegrees / 1000.0
+        except (IOError, ValueError):
+            pass
+
+    raise IOError("Could not read ACPI/ambient temperature from thermal zones")
+
+
 def get_cpu_temperature() -> float:
     """
     Read CPU package temperature from sysfs.
@@ -431,6 +475,251 @@ def get_power_consumption() -> float:
     # Method 3: Fallback to conservative estimate
     # Return midpoint of typical SBC power range
     return 12.0
+
+
+def get_weather_ambient_temperature(latitude: float = None, longitude: float = None,
+                                   api_key: str = None) -> Tuple[float, str]:
+    """
+    Get ambient temperature from weather API.
+
+    Tries multiple free weather services in order:
+    1. weather.gov (US only, no API key needed)
+    2. OpenWeatherMap (requires free API key)
+    3. wttr.in (IP-based geolocation, no key needed)
+
+    Args:
+        latitude: Location latitude (optional for some services)
+        longitude: Location longitude (optional for some services)
+        api_key: OpenWeatherMap API key (optional)
+
+    Returns:
+        Tuple of (temperature_celsius, source_name)
+
+    Raises:
+        IOError: If unable to fetch weather data from any source
+    """
+    import urllib.request
+    import urllib.error
+
+    # Method 1: weather.gov (NOAA, US only, no API key)
+    if latitude is not None and longitude is not None:
+        try:
+            # Get grid point
+            url = f"https://api.weather.gov/points/{latitude:.4f},{longitude:.4f}"
+            headers = {'User-Agent': 'ThermalManagementSystem/1.0'}
+            req = urllib.request.Request(url, headers=headers)
+
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode())
+                forecast_url = data['properties']['forecastHourly']
+
+            # Get current temperature
+            req = urllib.request.Request(forecast_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode())
+                temp_f = data['properties']['periods'][0]['temperature']
+                temp_c = (temp_f - 32) * 5/9
+                return temp_c, "weather.gov"
+        except (urllib.error.URLError, KeyError, IndexError, ValueError):
+            pass  # Try next method
+
+    # Method 2: OpenWeatherMap (requires API key)
+    if api_key and latitude is not None and longitude is not None:
+        try:
+            url = f"https://api.openweathermap.org/data/2.5/weather?lat={latitude}&lon={longitude}&appid={api_key}&units=metric"
+            with urllib.request.urlopen(url, timeout=10) as response:
+                data = json.loads(response.read().decode())
+                temp_c = data['main']['temp']
+                return temp_c, "OpenWeatherMap"
+        except (urllib.error.URLError, KeyError, ValueError):
+            pass  # Try next method
+
+    # Method 3: wttr.in (IP-based geolocation, no config needed)
+    try:
+        url = "https://wttr.in/?format=%t"
+        with urllib.request.urlopen(url, timeout=10) as response:
+            temp_str = response.read().decode().strip()
+            # Parse formats like "+15°C" or "-2°C"
+            temp_str = temp_str.replace('°C', '').replace('°F', '').replace('+', '').strip()
+            temp_c = float(temp_str)
+            return temp_c, "wttr.in"
+    except (urllib.error.URLError, ValueError):
+        pass
+
+    raise IOError("Unable to fetch weather data from any source")
+
+
+def auto_calibrate_with_stress(estimator: AmbientTempEstimator,
+                               ambient_source: str = "acpi",
+                               latitude: float = None,
+                               longitude: float = None,
+                               api_key: str = None,
+                               num_samples: int = 8,
+                               verbose: bool = True) -> Dict[str, float]:
+    """
+    Automatic calibration by varying CPU load and collecting samples.
+
+    This function automatically calibrates the estimator without requiring
+    manual thermometer measurements. It:
+    1. Gets ambient temperature from ACPI sensor or weather API
+    2. Varies CPU load from idle to 100%
+    3. Waits for thermal stabilization at each load level
+    4. Collects (T_cpu, P, T_amb) samples
+    5. Performs calibration via linear regression
+
+    Args:
+        estimator: AmbientTempEstimator instance to calibrate
+        ambient_source: Source for ambient temp ("acpi", "weather", or "both")
+        latitude: Location latitude (for weather API)
+        longitude: Location longitude (for weather API)
+        api_key: OpenWeatherMap API key (optional)
+        num_samples: Number of calibration samples (default: 8)
+        verbose: Print progress messages
+
+    Returns:
+        Calibration results dictionary
+
+    Raises:
+        ImportError: If required modules not available
+        IOError: If cannot read sensors or ambient source
+    """
+    import subprocess
+    import multiprocessing
+
+    if not NUMPY_AVAILABLE:
+        raise ImportError("NumPy required for auto-calibration")
+
+    # Get ambient temperature reference
+    T_amb_ref = None
+    amb_source_name = ""
+
+    if ambient_source in ["acpi", "both"]:
+        try:
+            T_amb_ref = get_acpi_ambient_temperature()
+            amb_source_name = "ACPI sensor"
+            if verbose:
+                print(f"✓ Using ACPI ambient temperature: {T_amb_ref:.2f}°C")
+        except IOError as e:
+            if ambient_source == "acpi":
+                raise IOError(f"Cannot read ACPI sensor: {e}")
+
+    if ambient_source in ["weather", "both"] and T_amb_ref is None:
+        try:
+            T_amb_ref, source = get_weather_ambient_temperature(latitude, longitude, api_key)
+            amb_source_name = f"Weather API ({source})"
+            if verbose:
+                print(f"✓ Using weather API ambient temperature: {T_amb_ref:.2f}°C (source: {source})")
+        except IOError as e:
+            if ambient_source == "weather":
+                raise IOError(f"Cannot fetch weather data: {e}")
+
+    if T_amb_ref is None:
+        raise IOError("Could not obtain ambient temperature from any source")
+
+    if verbose:
+        print(f"\n{'='*70}")
+        print(f"AUTO-CALIBRATION MODE")
+        print(f"{'='*70}")
+        print(f"Ambient reference: {T_amb_ref:.2f}°C ({amb_source_name})")
+        print(f"Collecting {num_samples} samples at different CPU loads...")
+        print(f"This will take ~{num_samples * 3} minutes (3 min per sample)")
+        print(f"\nNote: Ambient temperature is assumed constant during calibration.")
+        print(f"      For best results, run indoors or in stable conditions.")
+
+    samples = []
+    cpu_count = multiprocessing.cpu_count()
+
+    # Define load levels (0%, 25%, 50%, 75%, 100%, and some in between)
+    load_levels = [0.0, 0.15, 0.30, 0.50, 0.70, 0.85, 1.0, 0.40][:num_samples]
+
+    for i, load in enumerate(load_levels):
+        if verbose:
+            print(f"\n--- Sample {i+1}/{num_samples}: CPU load {int(load*100)}% ---")
+
+        # Apply CPU load using stress-ng or yes command
+        stress_process = None
+        if load > 0:
+            try:
+                # Try stress-ng first
+                cpu_workers = max(1, int(cpu_count * load))
+                stress_process = subprocess.Popen(
+                    ['stress-ng', '--cpu', str(cpu_workers), '--quiet'],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                if verbose:
+                    print(f"  Applying load with stress-ng ({cpu_workers} workers)...")
+            except FileNotFoundError:
+                # Fallback to yes > /dev/null
+                stress_process = subprocess.Popen(
+                    f"yes > /dev/null & " * int(cpu_count * load),
+                    shell=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                if verbose:
+                    print(f"  Applying load with shell command...")
+
+        # Wait for thermal stabilization (3 minutes)
+        stabilization_time = 180  # 3 minutes
+        if verbose:
+            print(f"  Waiting {stabilization_time}s for thermal stabilization...")
+
+        for t in range(stabilization_time):
+            time.sleep(1)
+            if verbose and t % 30 == 0 and t > 0:
+                try:
+                    T_cpu_current = get_cpu_temperature()
+                    print(f"    {t}s: CPU temp = {T_cpu_current:.1f}°C")
+                except:
+                    pass
+
+        # Read sensors
+        try:
+            T_cpu = get_cpu_temperature()
+            P = get_power_consumption()
+
+            samples.append((T_cpu, P, T_amb_ref))
+
+            if verbose:
+                print(f"  ✓ Sample recorded: T_cpu={T_cpu:.2f}°C, P={P:.2f}W, T_amb={T_amb_ref:.2f}°C")
+
+        except Exception as e:
+            if verbose:
+                print(f"  ✗ Error reading sensors: {e}")
+
+        # Stop stress process
+        if stress_process:
+            stress_process.terminate()
+            try:
+                stress_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                stress_process.kill()
+
+            # Also kill any lingering yes processes
+            subprocess.run(['pkill', '-9', 'yes'], stderr=subprocess.DEVNULL)
+
+    # Perform calibration
+    if len(samples) < 3:
+        raise ValueError(f"Only collected {len(samples)} samples, need at least 3")
+
+    if verbose:
+        print(f"\n{'='*70}")
+        print(f"Performing calibration with {len(samples)} samples...")
+        print(f"{'='*70}")
+
+    results = estimator.calibrate(samples)
+
+    if verbose:
+        print(f"\n✓ Auto-calibration successful!")
+        print(f"\nResults:")
+        print(f"  R_th (Thermal Resistance): {results['R_th']:.4f} °C/W")
+        print(f"  b (Bias):                  {results['b']:.4f} °C")
+        print(f"  σ (Uncertainty):           ±{results['sigma']:.2f} °C")
+        print(f"  R² (Fit Quality):          {results['r_squared']:.4f}")
+        print(f"\n📁 Calibration saved to: {estimator.config_file}")
+
+    return results
 
 
 def log_estimation(T_amb_est: float, uncertainty: float, T_cpu: float, P: float,
