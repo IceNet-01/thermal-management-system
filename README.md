@@ -72,6 +72,7 @@ The update script will:
 
 The uninstaller:
 - ✓ Handles both new and legacy installations
+- ✓ **Searches system-wide** for any installations in other locations
 - ✓ Removes all files including git downloads (with confirmation)
 - ✓ `--full` flag removes everything without prompts
 - ✓ Shows file counts and sizes before removal
@@ -385,16 +386,25 @@ The uninstaller will:
 - ✓ Stop and disable the systemd service
 - ✓ Remove all service files
 - ✓ Clean up old installations (pre-update versions with hardcoded paths)
+- ✓ **Search system-wide** for any thermal-management installations in other locations
+- ✓ **Search for stray files** (thermal_manager.py) in common directories
 - ✓ Optionally remove log files (or auto-remove with `--full`)
 - ✓ Optionally remove the installation directory including **all git files** (or auto-remove with `--full`)
 - ✓ Show file counts and sizes before removal
+
+**System-Wide Search**: The uninstaller searches for installations in:
+- `/home/*/thermal-management-system` and `/home/*/thermal-manager`
+- `/opt/thermal-management-system` and `/opt/thermal-manager`
+- `/usr/local/thermal-management-system` and `/usr/local/thermal-manager`
+- `/root/thermal-management-system` and `/root/thermal-manager`
+- Any `thermal_manager.py` files in home directories
 
 **Legacy Support**: The uninstaller can remove old versions installed before the update system existed, including:
 - Old log files in `/home/mesh/`, `/home/pi/`, etc.
 - Old service files with hardcoded paths
 - Orphaned thermal heater processes
 
-**Note**: The default uninstall now defaults to removing the installation directory (Y/n prompt). Use `--full` for no prompts at all.
+**Note**: The default uninstall now defaults to removing the installation directory (Y/n prompt). Use `--full` for no prompts at all. The uninstaller will ask before removing each installation found in other locations (unless using `--full`).
 
 ## Contributing
 

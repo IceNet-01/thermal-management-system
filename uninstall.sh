@@ -39,6 +39,7 @@ if [ "$FULL_REMOVE" = true ]; then
     echo "  - Service files"
     echo "  - Log files"
     echo "  - Installation directory (including all git files)"
+    echo "  - ANY other thermal-management installations found system-wide"
     echo ""
     read -p "Are you SURE you want to completely remove everything? (y/N): " -n 1 -r
     echo
@@ -53,6 +54,8 @@ else
     echo "  - Stop and disable the systemd service"
     echo "  - Remove service files"
     echo "  - Clean up old installations (pre-update versions)"
+    echo "  - Search for and optionally remove installations in other locations"
+    echo "  - Search for and optionally remove stray thermal manager files"
     echo "  - Optionally remove log files"
     echo "  - Optionally remove installation directory (all files including git)"
     echo ""
@@ -146,7 +149,90 @@ if [ $REMOVED_OLD_SERVICE -eq 0 ]; then
 fi
 
 echo ""
-echo -e "${GREEN}[4/6]${NC} Handling log directory..."
+echo -e "${GREEN}[4/8]${NC} Searching for installations in other locations..."
+
+# Search for thermal-management-system directories in common locations
+SEARCH_PATHS=(
+    "/home/*/thermal-management-system"
+    "/home/*/thermal-manager"
+    "/opt/thermal-management-system"
+    "/opt/thermal-manager"
+    "/usr/local/thermal-management-system"
+    "/usr/local/thermal-manager"
+    "/root/thermal-management-system"
+    "/root/thermal-manager"
+)
+
+FOUND_DIRS=0
+for pattern in "${SEARCH_PATHS[@]}"; do
+    for dir in $pattern; do
+        # Check if path exists and is not the current installation
+        if [ -d "$dir" ] && [ "$(realpath "$dir" 2>/dev/null)" != "$(realpath "$SCRIPT_DIR" 2>/dev/null)" ]; then
+            FOUND_DIRS=$((FOUND_DIRS + 1))
+            DIR_SIZE=$(du -sh "$dir" 2>/dev/null | cut -f1)
+            echo -e "${YELLOW}  Found: ${dir} (${DIR_SIZE})${NC}"
+
+            if [ "$FULL_REMOVE" = true ]; then
+                sudo rm -rf "$dir"
+                echo -e "${GREEN}    ✓ Removed${NC}"
+            else
+                read -p "    Remove this directory? (y/N): " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    sudo rm -rf "$dir"
+                    echo -e "${GREEN}    ✓ Removed${NC}"
+                else
+                    echo -e "${BLUE}    ℹ Preserved${NC}"
+                fi
+            fi
+        fi
+    done
+done
+
+if [ $FOUND_DIRS -eq 0 ]; then
+    echo -e "${BLUE}  ℹ No other installations found${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}[5/8]${NC} Searching for stray thermal manager files..."
+
+# Search for thermal_manager.py files in common locations (excluding current dir)
+STRAY_FILES_FOUND=0
+
+# Search in common home directories
+for user_home in /home/* /root; do
+    if [ -d "$user_home" ]; then
+        # Find thermal_manager.py files
+        while IFS= read -r file; do
+            # Skip if it's in the current installation directory
+            if [[ "$file" != "$SCRIPT_DIR"* ]]; then
+                STRAY_FILES_FOUND=$((STRAY_FILES_FOUND + 1))
+                echo -e "${YELLOW}  Found: ${file}${NC}"
+
+                if [ "$FULL_REMOVE" = true ]; then
+                    sudo rm -f "$file"
+                    echo -e "${GREEN}    ✓ Removed${NC}"
+                else
+                    read -p "    Remove this file? (y/N): " -n 1 -r
+                    echo
+                    if [[ $REPLY =~ ^[Yy]$ ]]; then
+                        sudo rm -f "$file"
+                        echo -e "${GREEN}    ✓ Removed${NC}"
+                    else
+                        echo -e "${BLUE}    ℹ Preserved${NC}"
+                    fi
+                fi
+            fi
+        done < <(find "$user_home" -maxdepth 3 -name "thermal_manager.py" 2>/dev/null)
+    fi
+done
+
+if [ $STRAY_FILES_FOUND -eq 0 ]; then
+    echo -e "${BLUE}  ℹ No stray thermal manager files found${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}[6/8]${NC} Handling log directory..."
 
 # Check new log directory
 if [ -d "/var/log/thermal-manager" ]; then
@@ -174,7 +260,7 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}[5/6]${NC} Checking for running processes..."
+echo -e "${GREEN}[7/8]${NC} Checking for running processes..."
 
 # Kill any remaining thermal heater processes
 HEATER_PIDS=$(ps aux | grep -E "thermal_heater|thermal_manager" | grep -v grep | awk '{print $2}')
@@ -189,7 +275,7 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}[6/6]${NC} Installation directory..."
+echo -e "${GREEN}[8/8]${NC} Current installation directory..."
 
 echo -e "${YELLOW}  Current directory: ${SCRIPT_DIR}${NC}"
 
@@ -256,8 +342,14 @@ echo -e "${GREEN}Summary of what was removed:${NC}"
 echo "  ✓ Systemd service (${SERVICE_NAME}.service)"
 echo "  ✓ Service configuration files"
 echo "  ✓ Old installation artifacts"
+if [ $FOUND_DIRS -gt 0 ]; then
+    echo "  ✓ Found and handled ${FOUND_DIRS} installation(s) in other locations"
+fi
+if [ $STRAY_FILES_FOUND -gt 0 ]; then
+    echo "  ✓ Found and handled ${STRAY_FILES_FOUND} stray thermal manager file(s)"
+fi
 if [ "$REMOVE_DIR" = true ]; then
-    echo "  ✓ Installation directory (all files including git)"
+    echo "  ✓ Current installation directory (all files including git)"
     echo "  ✓ Log files"
 fi
 echo ""
