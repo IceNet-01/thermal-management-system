@@ -13,6 +13,7 @@ This thermal management system automatically monitors ambient temperature and us
 ### Key Features
 
 - **Automatic Temperature Monitoring** - Checks ACPI (ambient case) temperature every 10 seconds
+- **Ambient Temperature Estimation** - Estimate ambient temp without dedicated sensor using CPU temp + power (±2-4°C accuracy)
 - **Smart CPU Heating** - Uses controlled CPU load to generate heat when needed
 - **Power Efficient** - 70% CPU utilization leaves headroom for other applications
 - **Terminal GUI Dashboard** - Real-time monitoring and manual controls via Textual TUI
@@ -154,21 +155,87 @@ Originally designed for:
 - **Protected equipment**: Meshtastic LoRa radios, storage
 - **Environment**: North Dakota winters (-20°C to 0°C)
 
+## Ambient Temperature Estimation
+
+**NEW: Estimate ambient temperature without a dedicated sensor - NO THERMOMETER REQUIRED!**
+
+The system now includes a physics-based ambient temperature estimator that uses CPU temperature and power consumption to calculate the surrounding air temperature with ±2-4°C accuracy.
+
+### Auto-Calibration - Zero Manual Work!
+
+The estimator features **automatic calibration** using your existing ACPI sensor or weather APIs. No thermometer, no manual measurements, just one command:
+
+```bash
+# Install numpy (required)
+pip3 install numpy --break-system-packages
+
+# Run auto-calibration (takes ~25 minutes, hands-off)
+python3 ambient_temp_example.py --auto-calibrate
+
+# That's it! Now estimate ambient anytime:
+python3 ambient_temp_example.py --estimate
+```
+
+### How It Works
+
+Uses thermal resistance model: `T_amb = T_cpu - (P × R_th + b)`
+
+**Auto-calibration process:**
+1. Uses existing ACPI sensor (thermal_zone0) as ambient reference
+2. Automatically varies CPU load from 0% to 100%
+3. Collects samples at different load levels
+4. Computes calibration constants via linear regression
+5. Saves calibration permanently
+
+**Alternative methods:**
+- Weather API calibration (for outdoor installations or verification)
+- Manual calibration with thermometer (for highest accuracy)
+
+### Quick Start
+
+```bash
+# AUTO-CALIBRATION (recommended!)
+python3 ambient_temp_example.py --auto-calibrate
+
+# Test available temperature sources
+python3 ambient_temp_example.py --test-sources
+
+# Get current ambient estimate
+python3 ambient_temp_example.py --estimate
+
+# Monitor continuously
+python3 ambient_temp_example.py --monitor --duration 300
+```
+
+### Features
+
+- **Calibration mode** - Linear regression from measured samples
+- **Estimation mode** - Real-time ambient temp with uncertainty (±σ)
+- **Cold start detection** - Auto-adjust on system boot
+- **Cooldown curve fitting** - Validate thermal model
+- **Persistent storage** - Calibration survives reboots
+- **Optional logging** - Timestamped estimates to file
+
+See **[AMBIENT_TEMPERATURE_ESTIMATION.md](AMBIENT_TEMPERATURE_ESTIMATION.md)** for complete documentation.
+
 ## File Structure
 
 ```
 thermal-management-system/
-├── thermal_manager.py          # Main service daemon
-├── thermal_dashboard.py        # GUI dashboard (Textual)
-├── thermal-manager.service     # Systemd unit file
-├── thermal_control.sh          # Service management script
-├── thermal                     # Dashboard launcher
-├── cpu_stress.py              # Stress testing tool
-├── temp_monitor.sh            # Temperature monitor script
-├── heater_export.sh           # Export/backup tool
-├── THERMAL_DASHBOARD.txt      # Dashboard user guide
-├── HEATER_QUICK_REFERENCE.txt # Quick reference card
-└── README.md                  # This file
+├── thermal_manager.py                # Main service daemon
+├── thermal_dashboard.py              # GUI dashboard (Textual)
+├── ambient_temp_estimator.py         # Ambient temperature estimation module
+├── ambient_temp_example.py           # Calibration & estimation examples
+├── thermal-manager.service           # Systemd unit file
+├── thermal_control.sh                # Service management script
+├── thermal                           # Dashboard launcher
+├── cpu_stress.py                     # Stress testing tool
+├── temp_monitor.sh                   # Temperature monitor script
+├── heater_export.sh                  # Export/backup tool
+├── AMBIENT_TEMPERATURE_ESTIMATION.md # Ambient temp estimation docs
+├── THERMAL_DASHBOARD.txt             # Dashboard user guide
+├── HEATER_QUICK_REFERENCE.txt        # Quick reference card
+└── README.md                         # This file
 ```
 
 ## Requirements
