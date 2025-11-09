@@ -227,17 +227,19 @@ class ThermalDashboard(App):
             'uptime': '--:--:--'
         }
 
-        # Check if heating is active by looking at logs
+        # Check if heating is active by looking at logs (use sudo to read)
         try:
-            with open(self.log_file, 'r') as f:
-                lines = f.readlines()
-                if lines:
-                    # Check last few lines for most recent status
-                    for line in reversed(lines[-10:]):
+            result = subprocess.run(['sudo', 'tail', '-10', self.log_file],
+                                  capture_output=True, text=True, timeout=2)
+            if result.returncode == 0 and result.stdout:
+                lines = result.stdout.split('\n')
+                # Check last few lines for most recent status
+                for line in reversed(lines):
+                    if line.strip():
                         if 'HEATING ON:' in line or 'HEATING:' in line:
                             status['heating'] = 'HEATING'
                             break
-                        elif 'HEATING OFF:' in line or 'IDLE:' in line:
+                        elif 'HEATING OFF:' in line or 'IDLE:' in line or 'IDLE (' in line:
                             status['heating'] = 'IDLE'
                             break
         except Exception as e:
@@ -258,7 +260,7 @@ class ThermalDashboard(App):
                 status['service'] = 'FAILED'
             else:
                 status['service'] = svc_status.upper()
-        except:
+        except Exception as e:
             status['service'] = 'UNKNOWN'
 
         # Calculate uptime
