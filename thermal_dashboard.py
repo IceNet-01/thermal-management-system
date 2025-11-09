@@ -7,6 +7,7 @@ Similar to Nomadnet interface style
 import os
 import time
 import subprocess
+import multiprocessing
 from datetime import datetime
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
@@ -14,6 +15,36 @@ from textual.widgets import Header, Footer, Static, Button, Label, DataTable, Lo
 from textual.reactive import reactive
 from textual import work
 from textual.timer import Timer
+
+
+def heat_worker_process(worker_id, heating_flag, cpu_usage=0.70):
+    """Worker process that generates CPU heat (runs in dashboard, no sudo needed)"""
+    # Set process name for easier identification
+    try:
+        import setproctitle
+        setproctitle.setproctitle(f"thermal_manual_heater_{worker_id}")
+    except ImportError:
+        pass
+
+    # Calculate work/sleep cycle for target CPU usage
+    work_time = cpu_usage  # seconds of work
+    sleep_time = 1 - cpu_usage  # seconds of sleep
+
+    while True:
+        if heating_flag.value:
+            # Do CPU-intensive work
+            start = time.time()
+            result = 0
+            # Simple CPU-intensive calculation
+            while time.time() - start < work_time:
+                result += sum(i * i for i in range(1000))
+
+            # Sleep to achieve target CPU usage
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+        else:
+            # Not heating - exit the process
+            break
 
 
 class TemperatureDisplay(Static):
@@ -171,6 +202,10 @@ class ThermalDashboard(App):
         self.temp_target = 5
         self.load_config()
 
+        # Manual heating workers (run without sudo!)
+        self.manual_heating_active = multiprocessing.Value('i', 0)
+        self.manual_workers = []
+
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header(show_clock=True)
@@ -244,6 +279,31 @@ class ThermalDashboard(App):
 
         return temps
 
+    def run_sudo_command(self, command):
+        """Run a command with sudo/pkexec, handling password prompts
+        Args:
+            command: List of command arguments (without sudo/pkexec prefix)
+        Returns:
+            subprocess.CompletedProcess result or None on failure
+        """
+        # Try pkexec first (GUI password prompt)
+        if os.path.exists('/usr/bin/pkexec'):
+            try:
+                result = subprocess.run(['pkexec'] + command,
+                                      capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    return result
+            except:
+                pass
+
+        # Fall back to sudo (may prompt in terminal)
+        try:
+            result = subprocess.run(['sudo'] + command,
+                                  capture_output=True, text=True, timeout=10)
+            return result
+        except Exception as e:
+            return None
+
     def get_status(self) -> dict:
         """Get system status"""
         status = {
@@ -252,11 +312,10 @@ class ThermalDashboard(App):
             'uptime': '--:--:--'
         }
 
-        # Check if heating is active by looking at logs (use sudo to read)
+        # Check if heating is active by looking at logs
         try:
-            result = subprocess.run(['sudo', 'tail', '-10', self.log_file],
-                                  capture_output=True, text=True, timeout=2)
-            if result.returncode == 0 and result.stdout:
+            result = self.run_sudo_command(['tail', '-10', self.log_file])
+            if result and result.returncode == 0 and result.stdout:
                 lines = result.stdout.split('\n')
                 # Check last few lines for most recent status
                 for line in reversed(lines):
@@ -271,20 +330,20 @@ class ThermalDashboard(App):
             # If log file doesn't exist or can't be read, status stays UNKNOWN
             pass
 
-        # Check service status (use sudo since we're not root)
+        # Check service status
         try:
-            result = subprocess.run(['sudo', 'systemctl', 'is-active', 'thermal-manager.service'],
-                                  capture_output=True, text=True, timeout=2)
-            svc_status = result.stdout.strip()
-            # Make it more readable
-            if svc_status == 'active':
-                status['service'] = 'ACTIVE'
-            elif svc_status == 'inactive':
-                status['service'] = 'INACTIVE'
-            elif svc_status == 'failed':
-                status['service'] = 'FAILED'
-            else:
-                status['service'] = svc_status.upper()
+            result = self.run_sudo_command(['systemctl', 'is-active', 'thermal-manager.service'])
+            if result:
+                svc_status = result.stdout.strip()
+                # Make it more readable
+                if svc_status == 'active':
+                    status['service'] = 'ACTIVE'
+                elif svc_status == 'inactive':
+                    status['service'] = 'INACTIVE'
+                elif svc_status == 'failed':
+                    status['service'] = 'FAILED'
+                else:
+                    status['service'] = svc_status.upper()
         except Exception as e:
             status['service'] = 'UNKNOWN'
 
@@ -302,10 +361,9 @@ class ThermalDashboard(App):
         log_widget = self.query_one("#logs", Log)
 
         try:
-            # Try to read log file with sudo if needed
-            result = subprocess.run(['sudo', 'tail', '-50', self.log_file],
-                                  capture_output=True, text=True, timeout=2)
-            if result.returncode == 0 and result.stdout:
+            # Try to read log file with sudo
+            result = self.run_sudo_command(['tail', '-50', self.log_file])
+            if result and result.returncode == 0 and result.stdout:
                 for line in result.stdout.split('\n'):
                     if line.strip():
                         log_widget.write_line(line.strip())
@@ -313,12 +371,6 @@ class ThermalDashboard(App):
                 log_widget.write_line("[yellow]No logs available yet[/]")
         except Exception as e:
             log_widget.write_line(f"[yellow]Cannot read logs: {str(e)}[/]")
-            with open(self.log_file, 'r') as f:
-                lines = f.readlines()
-                for line in lines[-50:]:  # Last 50 lines
-                    log_widget.write_line(line.strip())
-        except:
-            log_widget.write_line("[yellow]No logs available yet[/]")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses"""
@@ -349,22 +401,52 @@ class ThermalDashboard(App):
                 log_widget.write_line(f"[red]>>> CONFIG: Failed to save - check input values[/]")
 
     def force_heating_on(self) -> None:
-        """Force heating on (manual override)"""
+        """Force heating on (spawn manual workers - no sudo needed!)"""
+        if self.manual_workers:
+            # Already running
+            return
+
         try:
-            with open(self.override_file, 'w') as f:
-                f.write("HEATING_ON")
-            # Make sure it's world-readable so the service can read it
-            os.chmod(self.override_file, 0o644)
+            # Determine number of CPU cores to use
+            total_cores = multiprocessing.cpu_count()
+            cores_to_use = total_cores
+
+            # Set flag to active
+            self.manual_heating_active.value = 1
+
+            # Start worker processes
+            for i in range(cores_to_use):
+                p = multiprocessing.Process(target=heat_worker_process,
+                                          args=(i, self.manual_heating_active, 0.70))
+                p.daemon = True
+                p.start()
+                self.manual_workers.append(p)
+
+            log_widget = self.query_one("#logs", Log)
+            log_widget.write_line(f"[green]>>> Started {cores_to_use} manual heating workers (no sudo required)[/]")
         except Exception as e:
-            print(f"Error creating override file: {e}")
+            print(f"Error starting manual heating: {e}")
 
     def clear_override(self) -> None:
-        """Clear manual override - return to automatic mode"""
+        """Clear manual override - stop manual workers and return to automatic mode"""
         try:
-            if os.path.exists(self.override_file):
-                os.remove(self.override_file)
-        except:
-            pass
+            if self.manual_workers:
+                # Stop workers
+                self.manual_heating_active.value = 0
+                time.sleep(0.5)  # Give workers time to see the flag
+
+                # Terminate all workers
+                for p in self.manual_workers:
+                    if p.is_alive():
+                        p.terminate()
+                    p.join(timeout=1)
+
+                self.manual_workers = []
+
+                log_widget = self.query_one("#logs", Log)
+                log_widget.write_line(f"[green]>>> Stopped manual heating workers[/]")
+        except Exception as e:
+            print(f"Error stopping manual heating: {e}")
 
     def load_config(self) -> None:
         """Load temperature configuration from file"""
@@ -416,17 +498,16 @@ class ThermalDashboard(App):
 
     def restart_service(self) -> None:
         """Restart the thermal manager service"""
+        log_widget = self.query_one("#logs", Log)
         try:
-            # Use pkexec instead of sudo for GUI apps (no terminal required)
-            # Falls back to sudo if pkexec not available
-            if os.path.exists('/usr/bin/pkexec'):
-                subprocess.run(['pkexec', 'systemctl', 'restart', 'thermal-manager.service'],
-                             check=True, timeout=10)
+            result = self.run_sudo_command(['systemctl', 'restart', 'thermal-manager.service'])
+            if result and result.returncode == 0:
+                log_widget.write_line(f"[green]>>> SERVICE: Restart successful at {datetime.now().strftime('%H:%M:%S')}[/]")
             else:
-                subprocess.run(['sudo', 'systemctl', 'restart', 'thermal-manager.service'],
-                             check=True, timeout=5)
+                error_msg = result.stderr if result else "Unknown error"
+                log_widget.write_line(f"[red]>>> SERVICE: Restart failed - {error_msg}[/]")
         except Exception as e:
-            pass
+            log_widget.write_line(f"[red]>>> SERVICE: Restart failed - {str(e)}[/]")
 
     def action_view_full_logs(self) -> None:
         """View full logs in less"""
@@ -456,6 +537,19 @@ class ThermalDashboard(App):
         """Scroll the left panel down"""
         left_panel = self.query_one("#left_panel")
         left_panel.scroll_down()
+
+    def on_unmount(self) -> None:
+        """Clean up manual workers when dashboard closes"""
+        try:
+            if self.manual_workers:
+                self.manual_heating_active.value = 0
+                for p in self.manual_workers:
+                    if p.is_alive():
+                        p.terminate()
+                    p.join(timeout=1)
+                self.manual_workers = []
+        except:
+            pass
 
 
 if __name__ == "__main__":
