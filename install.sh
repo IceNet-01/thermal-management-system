@@ -140,7 +140,33 @@ sudo systemctl restart ${SERVICE_NAME}.service
 sleep 2
 
 echo ""
-echo -e "${GREEN}[7/7]${NC} Verifying installation..."
+echo -e "${GREEN}[7/8]${NC} Adding commands to PATH..."
+
+# Create symlinks in /usr/local/bin so commands can be run from anywhere
+echo -e "${YELLOW}  Creating command symlinks in /usr/local/bin...${NC}"
+
+# thermal - GUI dashboard
+sudo ln -sf "${INSTALL_DIR}/thermal" /usr/local/bin/thermal
+echo -e "${GREEN}  ✓ thermal${NC}"
+
+# thermal-control - service management
+sudo ln -sf "${INSTALL_DIR}/thermal_control.sh" /usr/local/bin/thermal-control
+echo -e "${GREEN}  ✓ thermal-control${NC}"
+
+# thermal-update - update script
+sudo ln -sf "${INSTALL_DIR}/update.sh" /usr/local/bin/thermal-update
+echo -e "${GREEN}  ✓ thermal-update${NC}"
+
+# thermal-diagnose - diagnostic tool
+if [ -f "${INSTALL_DIR}/diagnose.sh" ]; then
+    sudo ln -sf "${INSTALL_DIR}/diagnose.sh" /usr/local/bin/thermal-diagnose
+    echo -e "${GREEN}  ✓ thermal-diagnose${NC}"
+fi
+
+echo -e "${GREEN}✓ Commands added to PATH - you can now run 'thermal' from anywhere!${NC}"
+
+echo ""
+echo -e "${GREEN}[8/8]${NC} Verifying installation..."
 
 # Check if service is active
 if sudo systemctl is-active --quiet ${SERVICE_NAME}.service; then
@@ -200,11 +226,12 @@ echo -e "${BLUE}Installation Directory:${NC} ${INSTALL_DIR}"
 echo -e "${BLUE}Service Name:${NC} ${SERVICE_NAME}.service"
 echo -e "${BLUE}Log File:${NC} ${LOG_FILE}"
 echo ""
-echo -e "${YELLOW}Quick Start Commands:${NC}"
-echo -e "  ${GREEN}./thermal${NC}              - Launch GUI dashboard"
-echo -e "  ${GREEN}./thermal_control.sh status${NC}   - Check service status"
-echo -e "  ${GREEN}./thermal_control.sh logs${NC}     - View logs"
-echo -e "  ${GREEN}./update.sh${NC}            - Pull latest updates"
+echo -e "${YELLOW}Quick Start Commands (run from anywhere!):${NC}"
+echo -e "  ${GREEN}thermal${NC}                - Launch GUI dashboard"
+echo -e "  ${GREEN}thermal-control status${NC} - Check service status"
+echo -e "  ${GREEN}thermal-control logs${NC}   - View logs"
+echo -e "  ${GREEN}thermal-update${NC}         - Pull latest updates"
+echo -e "  ${GREEN}thermal-diagnose${NC}       - Run diagnostics"
 echo ""
 echo -e "${BLUE}Service Management:${NC}"
 echo -e "  ${GREEN}sudo systemctl status ${SERVICE_NAME}${NC}   - Check status"
@@ -215,7 +242,7 @@ echo ""
 echo -e "${GREEN}✓ Service will automatically start on system reboot${NC}"
 echo ""
 echo -e "${YELLOW}Next Steps:${NC}"
-echo -e "  1. Run ${GREEN}./thermal${NC} to open the dashboard and monitor temperature"
-echo -e "  2. Customize thresholds in ${BLUE}thermal_manager.py${NC} if needed"
-echo -e "  3. Run ${GREEN}./update.sh${NC} anytime to get latest updates"
+echo -e "  1. Run ${GREEN}thermal${NC} from anywhere to open the dashboard"
+echo -e "  2. Configure temperature thresholds in the GUI"
+echo -e "  3. Run ${GREEN}thermal-update${NC} anytime to get latest updates"
 echo ""
