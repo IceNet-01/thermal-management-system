@@ -5,8 +5,10 @@
 
 set -e
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_NAME="heater_project"
-EXPORT_DIR="/home/mesh/${PROJECT_NAME}"
+EXPORT_DIR="/tmp/${PROJECT_NAME}"
 ARCHIVE_NAME="${PROJECT_NAME}_$(date +%Y%m%d_%H%M%S).tar.gz"
 
 echo "════════════════════════════════════════════════════════"
@@ -20,16 +22,25 @@ mkdir -p "$EXPORT_DIR"
 
 # Copy all project files
 echo "[2/4] Copying project files..."
-cp /home/mesh/thermal_manager.py "$EXPORT_DIR/"
-cp /home/mesh/thermal-manager.service "$EXPORT_DIR/"
-cp /home/mesh/thermal_control.sh "$EXPORT_DIR/"
-cp /home/mesh/thermal_dashboard.py "$EXPORT_DIR/"
-cp /home/mesh/thermal "$EXPORT_DIR/"
-cp /home/mesh/cpu_stress.py "$EXPORT_DIR/"
-cp /home/mesh/temp_monitor.sh "$EXPORT_DIR/"
-cp /home/mesh/THERMAL_DASHBOARD.txt "$EXPORT_DIR/"
-cp /home/mesh/HEATER_PROJECT_README.md "$EXPORT_DIR/"
-cp /home/mesh/heater_export.sh "$EXPORT_DIR/"
+cd "$SCRIPT_DIR"
+cp thermal_manager.py "$EXPORT_DIR/" 2>/dev/null || true
+cp thermal-manager.service "$EXPORT_DIR/" 2>/dev/null || true
+cp thermal_control.sh "$EXPORT_DIR/" 2>/dev/null || true
+cp thermal_dashboard.py "$EXPORT_DIR/" 2>/dev/null || true
+cp thermal "$EXPORT_DIR/" 2>/dev/null || true
+cp cpu_stress.py "$EXPORT_DIR/" 2>/dev/null || true
+cp temp_monitor.sh "$EXPORT_DIR/" 2>/dev/null || true
+cp THERMAL_DASHBOARD.txt "$EXPORT_DIR/" 2>/dev/null || true
+cp README.md "$EXPORT_DIR/" 2>/dev/null || true
+cp heater_export.sh "$EXPORT_DIR/" 2>/dev/null || true
+cp install.sh "$EXPORT_DIR/" 2>/dev/null || true
+cp update.sh "$EXPORT_DIR/" 2>/dev/null || true
+cp uninstall.sh "$EXPORT_DIR/" 2>/dev/null || true
+cp diagnose.sh "$EXPORT_DIR/" 2>/dev/null || true
+cp ambient_temp_*.py "$EXPORT_DIR/" 2>/dev/null || true
+cp AMBIENT_TEMPERATURE_ESTIMATION.md "$EXPORT_DIR/" 2>/dev/null || true
+cp HEATER_QUICK_REFERENCE.txt "$EXPORT_DIR/" 2>/dev/null || true
+cp LICENSE "$EXPORT_DIR/" 2>/dev/null || true
 
 # Create installation script for new system
 echo "[3/4] Creating auto-install script..."
@@ -97,8 +108,8 @@ chmod +x "$EXPORT_DIR/INSTALL.sh"
 
 # Create archive
 echo "[4/4] Creating archive..."
-cd /home/mesh
-tar -czf "$ARCHIVE_NAME" "$PROJECT_NAME/"
+cd /tmp
+tar -czf "$SCRIPT_DIR/$ARCHIVE_NAME" "$PROJECT_NAME/"
 
 # Cleanup
 rm -rf "$EXPORT_DIR"
@@ -108,7 +119,7 @@ echo "════════════════════════�
 echo "✓ Export complete!"
 echo "════════════════════════════════════════════════════════"
 echo ""
-echo "Archive created: /home/mesh/$ARCHIVE_NAME"
+echo "Archive created: $SCRIPT_DIR/$ARCHIVE_NAME"
 echo ""
 echo "To transfer to another system:"
 echo "  1. Copy archive: scp $ARCHIVE_NAME user@newhost:~"
