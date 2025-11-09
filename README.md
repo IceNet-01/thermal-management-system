@@ -44,11 +44,17 @@ That's it! The installer will:
 ### Easy Updates
 
 ```bash
+# Check for updates without applying them
+./update.sh --check
+# or
+./thermal_control.sh check
+
 # Pull latest updates and restart service
 ./update.sh
 ```
 
 The update script will:
+- ✓ Check for available updates (with `--check` flag)
 - ✓ Pull latest changes from git
 - ✓ Update dependencies if needed
 - ✓ Restart the service automatically
@@ -57,11 +63,18 @@ The update script will:
 ### Complete Removal
 
 ```bash
-# Uninstall everything (including old versions)
+# Interactive uninstall with prompts
 ./uninstall.sh
+
+# Full removal without prompts (removes EVERYTHING)
+./uninstall.sh --full
 ```
 
-The uninstaller handles both new and legacy installations.
+The uninstaller:
+- ✓ Handles both new and legacy installations
+- ✓ Removes all files including git downloads (with confirmation)
+- ✓ `--full` flag removes everything without prompts
+- ✓ Shows file counts and sizes before removal
 
 ### Usage
 
@@ -80,6 +93,12 @@ The uninstaller handles both new and legacy installations.
 
 # Restart service
 ./thermal_control.sh restart
+
+# Check for updates
+./thermal_control.sh check
+
+# Run diagnostics
+./thermal_control.sh diagnose
 ```
 
 ## How It Works
@@ -355,22 +374,27 @@ cd heater_project
 To completely remove the thermal management system:
 
 ```bash
+# Interactive removal (asks before deleting files)
 ./uninstall.sh
+
+# Complete removal without prompts
+./uninstall.sh --full
 ```
 
 The uninstaller will:
 - ✓ Stop and disable the systemd service
 - ✓ Remove all service files
 - ✓ Clean up old installations (pre-update versions with hardcoded paths)
-- ✓ Optionally remove log files
-- ✓ Optionally remove the installation directory
+- ✓ Optionally remove log files (or auto-remove with `--full`)
+- ✓ Optionally remove the installation directory including **all git files** (or auto-remove with `--full`)
+- ✓ Show file counts and sizes before removal
 
 **Legacy Support**: The uninstaller can remove old versions installed before the update system existed, including:
 - Old log files in `/home/mesh/`, `/home/pi/`, etc.
 - Old service files with hardcoded paths
 - Orphaned thermal heater processes
 
-This ensures a clean removal regardless of which version you installed.
+**Note**: The default uninstall now defaults to removing the installation directory (Y/n prompt). Use `--full` for no prompts at all.
 
 ## Contributing
 

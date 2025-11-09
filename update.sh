@@ -3,6 +3,10 @@
 # Thermal Management System - Easy Update Script
 # Pulls latest changes from git and restarts service if needed
 #
+# Usage:
+#   ./update.sh           - Check for and apply updates
+#   ./update.sh --check   - Only check for updates (don't apply)
+#
 
 set -e  # Exit on error
 
@@ -16,9 +20,21 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="thermal-manager"
 
-echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║   Thermal Management System - Update Script           ║${NC}"
-echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
+# Parse arguments
+CHECK_ONLY=false
+if [ "$1" = "--check" ] || [ "$1" = "-c" ]; then
+    CHECK_ONLY=true
+fi
+
+if [ "$CHECK_ONLY" = true ]; then
+    echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║   Thermal Management System - Check for Updates       ║${NC}"
+    echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
+else
+    echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║   Thermal Management System - Update Script           ║${NC}"
+    echo -e "${BLUE}╔════════════════════════════════════════════════════════╗${NC}"
+fi
 echo ""
 
 # Check if this is a git repository
@@ -36,32 +52,42 @@ if sudo systemctl is-active --quiet ${SERVICE_NAME}.service 2>/dev/null; then
     echo -e "${BLUE}ℹ Service is currently running${NC}"
 fi
 
-echo -e "${GREEN}[1/5]${NC} Checking for local changes..."
+if [ "$CHECK_ONLY" = false ]; then
+    echo -e "${GREEN}[1/5]${NC} Checking for local changes..."
+else
+    echo -e "${GREEN}[1/2]${NC} Checking for local changes..."
+fi
 cd "${SCRIPT_DIR}"
 
 # Check for uncommitted changes
 if ! git diff-index --quiet HEAD -- 2>/dev/null; then
     echo -e "${YELLOW}⚠ Warning: You have local changes that are not committed${NC}"
-    echo ""
-    echo "Modified files:"
-    git status --short
-    echo ""
-    read -p "Do you want to stash these changes and continue? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo -e "${BLUE}  Stashing local changes...${NC}"
-        git stash push -m "Auto-stash before update $(date +%Y-%m-%d_%H:%M:%S)"
-        echo -e "${GREEN}  ✓ Changes stashed (restore with: git stash pop)${NC}"
-    else
-        echo -e "${RED}Update cancelled${NC}"
-        exit 1
+    if [ "$CHECK_ONLY" = false ]; then
+        echo ""
+        echo "Modified files:"
+        git status --short
+        echo ""
+        read -p "Do you want to stash these changes and continue? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo -e "${BLUE}  Stashing local changes...${NC}"
+            git stash push -m "Auto-stash before update $(date +%Y-%m-%d_%H:%M:%S)"
+            echo -e "${GREEN}  ✓ Changes stashed (restore with: git stash pop)${NC}"
+        else
+            echo -e "${RED}Update cancelled${NC}"
+            exit 1
+        fi
     fi
 else
     echo -e "${GREEN}✓ No local changes${NC}"
 fi
 
 echo ""
-echo -e "${GREEN}[2/5]${NC} Fetching latest changes from remote..."
+if [ "$CHECK_ONLY" = false ]; then
+    echo -e "${GREEN}[2/5]${NC} Fetching latest changes from remote..."
+else
+    echo -e "${GREEN}[2/2]${NC} Fetching latest changes from remote..."
+fi
 git fetch origin
 
 # Check if there are updates available
@@ -79,6 +105,13 @@ fi
 if [ "$LOCAL" = "$REMOTE" ]; then
     echo -e "${GREEN}✓ Already up to date!${NC}"
     echo "  You are running the latest version."
+
+    if [ "$CHECK_ONLY" = true ]; then
+        echo ""
+        CURRENT_VERSION=$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD)
+        echo -e "${BLUE}Current version:${NC} ${CURRENT_VERSION}"
+        echo -e "${BLUE}Latest commit:${NC} $(git log -1 --pretty=format:'%h - %s (%ar)')"
+    fi
     exit 0
 elif [ "$LOCAL" = "$BASE" ]; then
     echo -e "${BLUE}ℹ Updates available${NC}"
@@ -87,9 +120,26 @@ elif [ "$LOCAL" = "$BASE" ]; then
     echo "Recent commits:"
     git log --oneline --decorate --graph HEAD..@{u} | head -10
     echo ""
+
+    # Count commits
+    COMMIT_COUNT=$(git rev-list --count HEAD..@{u})
+    echo -e "${YELLOW}${COMMIT_COUNT} new commit(s) available${NC}"
+
+    if [ "$CHECK_ONLY" = true ]; then
+        echo ""
+        echo -e "${GREEN}To apply these updates, run: ./update.sh${NC}"
+        exit 0
+    fi
 else
     echo -e "${YELLOW}⚠ Branches have diverged${NC}"
     echo "  Your local branch and remote have different commits."
+
+    if [ "$CHECK_ONLY" = true ]; then
+        echo ""
+        echo -e "${YELLOW}Cannot safely determine updates. Manual git intervention may be needed.${NC}"
+        exit 1
+    fi
+
     read -p "Attempt to pull anyway? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
