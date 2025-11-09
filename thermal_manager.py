@@ -17,6 +17,7 @@ TEMP_TARGET_C = 5       # Stop heating above 41°F (5°C) - hysteresis
 CHECK_INTERVAL = 10     # Check temperature every 10 seconds
 CPU_USAGE = 0.70        # Use 70% of available CPU for heating (leave 30% headroom)
 LOG_FILE = os.environ.get("LOG_FILE", "/var/log/thermal-manager/thermal_manager.log")
+OVERRIDE_FILE = "/tmp/thermal_override"  # Manual override file
 
 # Global flag for worker processes
 heating_active = multiprocessing.Value('i', 0)
@@ -37,6 +38,23 @@ def log(message):
             f.write(log_msg + "\n")
     except Exception as e:
         print(f"Warning: Could not write to log file {LOG_FILE}: {e}")
+
+
+def check_manual_override():
+    """Check if manual override is active
+    Returns: (override_active, force_heating_on)
+    """
+    try:
+        if os.path.exists(OVERRIDE_FILE):
+            with open(OVERRIDE_FILE, 'r') as f:
+                command = f.read().strip()
+                if command == "HEATING_ON":
+                    return True, True
+                elif command == "HEATING_OFF":
+                    return True, False
+    except:
+        pass
+    return False, False
 
 
 def get_ambient_temp():
@@ -188,23 +206,41 @@ def main():
 
             temp_f = (temp * 9/5) + 32  # Convert to Fahrenheit for logging
 
-            # Decide whether to heat
-            if temp < TEMP_MIN_C and not currently_heating:
-                # Too cold - start heating
-                heating_active.value = 1
-                currently_heating = True
-                log(f"HEATING ON: Temp={temp:.1f}°C ({temp_f:.1f}°F) - Below {TEMP_MIN_C}°C")
+            # Check for manual override first
+            override_active, force_heating = check_manual_override()
 
-            elif temp >= TEMP_TARGET_C and currently_heating:
-                # Warm enough - stop heating
-                heating_active.value = 0
-                currently_heating = False
-                log(f"HEATING OFF: Temp={temp:.1f}°C ({temp_f:.1f}°F) - Reached {TEMP_TARGET_C}°C")
-
+            if override_active:
+                # Manual override is active
+                if force_heating and not currently_heating:
+                    heating_active.value = 1
+                    currently_heating = True
+                    log(f"HEATING ON: MANUAL OVERRIDE - Temp={temp:.1f}°C ({temp_f:.1f}°F)")
+                elif not force_heating and currently_heating:
+                    heating_active.value = 0
+                    currently_heating = False
+                    log(f"HEATING OFF: MANUAL OVERRIDE - Temp={temp:.1f}°C ({temp_f:.1f}°F)")
+                else:
+                    # Status unchanged - log periodically
+                    status = "HEATING (OVERRIDE)" if currently_heating else "IDLE (OVERRIDE)"
+                    log(f"{status}: Temp={temp:.1f}°C ({temp_f:.1f}°F) [{sensor_name}]")
             else:
-                # Status unchanged - log periodically
-                status = "HEATING" if currently_heating else "IDLE"
-                log(f"{status}: Temp={temp:.1f}°C ({temp_f:.1f}°F) [{sensor_name}]")
+                # Normal temperature-based operation
+                if temp < TEMP_MIN_C and not currently_heating:
+                    # Too cold - start heating
+                    heating_active.value = 1
+                    currently_heating = True
+                    log(f"HEATING ON: Temp={temp:.1f}°C ({temp_f:.1f}°F) - Below {TEMP_MIN_C}°C")
+
+                elif temp >= TEMP_TARGET_C and currently_heating:
+                    # Warm enough - stop heating
+                    heating_active.value = 0
+                    currently_heating = False
+                    log(f"HEATING OFF: Temp={temp:.1f}°C ({temp_f:.1f}°F) - Reached {TEMP_TARGET_C}°C")
+
+                else:
+                    # Status unchanged - log periodically
+                    status = "HEATING" if currently_heating else "IDLE"
+                    log(f"{status}: Temp={temp:.1f}°C ({temp_f:.1f}°F) [{sensor_name}]")
 
             time.sleep(CHECK_INTERVAL)
 

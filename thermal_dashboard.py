@@ -150,6 +150,7 @@ class ThermalDashboard(App):
         super().__init__()
         self.override_file = "/tmp/thermal_override"
         self.start_time = time.time()
+        self.log_file = os.environ.get("LOG_FILE", "/var/log/thermal-manager/thermal_manager.log")
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -164,6 +165,7 @@ class ThermalDashboard(App):
                     yield Label("[bold cyan]═══ MANUAL CONTROLS ═══[/]")
                     yield Button("🔥 FORCE HEATING ON", id="heat_on", classes="heat_on")
                     yield Button("❄️  FORCE HEATING OFF", id="heat_off", classes="heat_off")
+                    yield Button("🔓 CLEAR OVERRIDE", id="clear_override", classes="service")
                     yield Button("🔄 RESTART SERVICE", id="restart", classes="service")
                     yield Button("📊 VIEW FULL LOGS", id="view_logs", classes="service")
 
@@ -226,24 +228,37 @@ class ThermalDashboard(App):
 
         # Check if heating is active by looking at logs
         try:
-            with open('/home/mesh/thermal_manager.log', 'r') as f:
+            with open(self.log_file, 'r') as f:
                 lines = f.readlines()
                 if lines:
-                    last_line = lines[-1]
-                    if 'HEATING' in last_line:
-                        status['heating'] = 'HEATING'
-                    elif 'IDLE' in last_line:
-                        status['heating'] = 'IDLE'
-        except:
+                    # Check last few lines for most recent status
+                    for line in reversed(lines[-10:]):
+                        if 'HEATING ON:' in line or 'HEATING:' in line:
+                            status['heating'] = 'HEATING'
+                            break
+                        elif 'HEATING OFF:' in line or 'IDLE:' in line:
+                            status['heating'] = 'IDLE'
+                            break
+        except Exception as e:
+            # If log file doesn't exist or can't be read, status stays UNKNOWN
             pass
 
-        # Check service status
+        # Check service status (use sudo since we're not root)
         try:
-            result = subprocess.run(['systemctl', 'is-active', 'thermal-manager.service'],
-                                  capture_output=True, text=True, timeout=1)
-            status['service'] = result.stdout.strip()
+            result = subprocess.run(['sudo', 'systemctl', 'is-active', 'thermal-manager.service'],
+                                  capture_output=True, text=True, timeout=2)
+            svc_status = result.stdout.strip()
+            # Make it more readable
+            if svc_status == 'active':
+                status['service'] = 'ACTIVE'
+            elif svc_status == 'inactive':
+                status['service'] = 'INACTIVE'
+            elif svc_status == 'failed':
+                status['service'] = 'FAILED'
+            else:
+                status['service'] = svc_status.upper()
         except:
-            status['service'] = 'unknown'
+            status['service'] = 'UNKNOWN'
 
         # Calculate uptime
         uptime_seconds = int(time.time() - self.start_time)
@@ -259,12 +274,17 @@ class ThermalDashboard(App):
         log_widget = self.query_one("#logs", Log)
 
         try:
-            with open('/home/mesh/thermal_manager.log', 'r') as f:
-                lines = f.readlines()
-                for line in lines[-50:]:  # Last 50 lines
-                    log_widget.write_line(line.strip())
-        except:
-            log_widget.write_line("[yellow]No logs available yet[/]")
+            # Try to read log file with sudo if needed
+            result = subprocess.run(['sudo', 'tail', '-50', self.log_file],
+                                  capture_output=True, text=True, timeout=2)
+            if result.returncode == 0 and result.stdout:
+                for line in result.stdout.split('\n'):
+                    if line.strip():
+                        log_widget.write_line(line.strip())
+            else:
+                log_widget.write_line("[yellow]No logs available yet[/]")
+        except Exception as e:
+            log_widget.write_line(f"[yellow]Cannot read logs: {str(e)}[/]")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses"""
@@ -278,6 +298,10 @@ class ThermalDashboard(App):
         elif button_id == "heat_off":
             self.force_heating_off()
             log_widget.write_line(f"[blue]>>> MANUAL: Forced heating OFF at {datetime.now().strftime('%H:%M:%S')}[/]")
+
+        elif button_id == "clear_override":
+            self.clear_override()
+            log_widget.write_line(f"[green]>>> MANUAL: Override cleared - returning to auto mode at {datetime.now().strftime('%H:%M:%S')}[/]")
 
         elif button_id == "restart":
             self.restart_service()
@@ -300,6 +324,14 @@ class ThermalDashboard(App):
         with open(self.override_file, 'w') as f:
             f.write("HEATING_OFF")
 
+    def clear_override(self) -> None:
+        """Clear manual override - return to automatic mode"""
+        try:
+            if os.path.exists(self.override_file):
+                os.remove(self.override_file)
+        except:
+            pass
+
     def restart_service(self) -> None:
         """Restart the thermal manager service"""
         try:
@@ -311,7 +343,7 @@ class ThermalDashboard(App):
     def action_view_full_logs(self) -> None:
         """View full logs in less"""
         self.exit()
-        os.system('less +G /home/mesh/thermal_manager.log')
+        os.system(f'sudo less +G {self.log_file}')
 
     def action_refresh(self) -> None:
         """Manual refresh"""
