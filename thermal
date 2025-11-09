@@ -1,4 +1,8 @@
 #!/bin/bash
 # Thermal Dashboard Launcher
 
-python3 /home/mesh/thermal_dashboard.py
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Launch the dashboard from the script directory
+python3 "$SCRIPT_DIR/thermal_dashboard.py"

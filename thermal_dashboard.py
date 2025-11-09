@@ -150,6 +150,8 @@ class ThermalDashboard(App):
         super().__init__()
         self.override_file = "/tmp/thermal_override"
         self.start_time = time.time()
+        # Use environment variable or fallback to default location
+        self.log_file = os.environ.get("LOG_FILE", "/var/log/thermal-manager/thermal_manager.log")
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -226,7 +228,7 @@ class ThermalDashboard(App):
 
         # Check if heating is active by looking at logs
         try:
-            with open('/home/mesh/thermal_manager.log', 'r') as f:
+            with open(self.log_file, 'r') as f:
                 lines = f.readlines()
                 if lines:
                     last_line = lines[-1]
@@ -259,7 +261,7 @@ class ThermalDashboard(App):
         log_widget = self.query_one("#logs", Log)
 
         try:
-            with open('/home/mesh/thermal_manager.log', 'r') as f:
+            with open(self.log_file, 'r') as f:
                 lines = f.readlines()
                 for line in lines[-50:]:  # Last 50 lines
                     log_widget.write_line(line.strip())
@@ -303,15 +305,21 @@ class ThermalDashboard(App):
     def restart_service(self) -> None:
         """Restart the thermal manager service"""
         try:
-            subprocess.run(['sudo', 'systemctl', 'restart', 'thermal-manager.service'],
-                         check=True, timeout=5)
-        except:
+            # Use pkexec instead of sudo for GUI apps (no terminal required)
+            # Falls back to sudo if pkexec not available
+            if os.path.exists('/usr/bin/pkexec'):
+                subprocess.run(['pkexec', 'systemctl', 'restart', 'thermal-manager.service'],
+                             check=True, timeout=10)
+            else:
+                subprocess.run(['sudo', 'systemctl', 'restart', 'thermal-manager.service'],
+                             check=True, timeout=5)
+        except Exception as e:
             pass
 
     def action_view_full_logs(self) -> None:
         """View full logs in less"""
         self.exit()
-        os.system('less +G /home/mesh/thermal_manager.log')
+        os.system(f'less +G {self.log_file}')
 
     def action_refresh(self) -> None:
         """Manual refresh"""

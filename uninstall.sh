@@ -71,7 +71,7 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}[1/6]${NC} Stopping service..."
+echo -e "${GREEN}[1/9]${NC} Stopping service..."
 
 # Check if service exists and stop it
 if sudo systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
@@ -86,7 +86,7 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}[2/6]${NC} Disabling and removing service..."
+echo -e "${GREEN}[2/9]${NC} Disabling and removing service..."
 
 # Disable and remove service
 if sudo systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
@@ -106,7 +106,7 @@ sudo systemctl reset-failed 2>/dev/null || true
 echo -e "${GREEN}✓ Systemd reloaded${NC}"
 
 echo ""
-echo -e "${GREEN}[3/6]${NC} Cleaning up old installation artifacts..."
+echo -e "${GREEN}[3/9]${NC} Cleaning up old installation artifacts..."
 
 # Remove old log file locations (pre-update versions)
 OLD_LOG_LOCATIONS=(
@@ -149,7 +149,7 @@ if [ $REMOVED_OLD_SERVICE -eq 0 ]; then
 fi
 
 echo ""
-echo -e "${GREEN}[4/8]${NC} Searching for installations in other locations..."
+echo -e "${GREEN}[4/9]${NC} Searching for installations in other locations..."
 
 # Search for thermal-management-system directories in common locations
 SEARCH_PATHS=(
@@ -194,7 +194,7 @@ if [ $FOUND_DIRS -eq 0 ]; then
 fi
 
 echo ""
-echo -e "${GREEN}[5/8]${NC} Searching for stray thermal manager files..."
+echo -e "${GREEN}[5/9]${NC} Searching for stray thermal manager files..."
 
 # Search for thermal_manager.py files in common locations (excluding current dir)
 STRAY_FILES_FOUND=0
@@ -232,7 +232,7 @@ if [ $STRAY_FILES_FOUND -eq 0 ]; then
 fi
 
 echo ""
-echo -e "${GREEN}[6/8]${NC} Handling log directory..."
+echo -e "${GREEN}[6/9]${NC} Handling log directory..."
 
 # Check new log directory
 if [ -d "/var/log/thermal-manager" ]; then
@@ -260,7 +260,7 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}[7/8]${NC} Checking for running processes..."
+echo -e "${GREEN}[7/9]${NC} Checking for running processes..."
 
 # Kill any remaining thermal heater processes
 HEATER_PIDS=$(ps aux | grep -E "thermal_heater|thermal_manager" | grep -v grep | awk '{print $2}')
@@ -275,7 +275,18 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}[8/8]${NC} Current installation directory..."
+echo -e "${GREEN}[8/9]${NC} Removing temporary files..."
+
+# Remove override file
+if [ -f "/tmp/thermal_override" ]; then
+    sudo rm -f /tmp/thermal_override
+    echo -e "${GREEN}  ✓ Removed thermal override file${NC}"
+else
+    echo -e "${BLUE}  ℹ No override file found${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}[9/9]${NC} Current installation directory..."
 
 echo -e "${YELLOW}  Current directory: ${SCRIPT_DIR}${NC}"
 
