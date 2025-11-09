@@ -54,6 +54,15 @@ The update script will:
 - ✓ Restart the service automatically
 - ✓ Preserve your local configuration
 
+### Complete Removal
+
+```bash
+# Uninstall everything (including old versions)
+./uninstall.sh
+```
+
+The uninstaller handles both new and legacy installations.
+
 ### Usage
 
 ```bash
@@ -239,6 +248,7 @@ See **[AMBIENT_TEMPERATURE_ESTIMATION.md](AMBIENT_TEMPERATURE_ESTIMATION.md)** f
 thermal-management-system/
 ├── install.sh                        # 🆕 Easy installation script (ONE COMMAND!)
 ├── update.sh                         # 🆕 Easy update script (pull & restart)
+├── uninstall.sh                      # 🆕 Complete uninstaller (handles old versions)
 ├── thermal_manager.py                # Main service daemon
 ├── thermal_dashboard.py              # GUI dashboard (Textual)
 ├── ambient_temp_estimator.py         # Ambient temperature estimation module
@@ -308,6 +318,28 @@ tar -xzf heater_project_*.tar.gz
 cd heater_project
 ./INSTALL.sh
 ```
+
+## Uninstalling
+
+To completely remove the thermal management system:
+
+```bash
+./uninstall.sh
+```
+
+The uninstaller will:
+- ✓ Stop and disable the systemd service
+- ✓ Remove all service files
+- ✓ Clean up old installations (pre-update versions with hardcoded paths)
+- ✓ Optionally remove log files
+- ✓ Optionally remove the installation directory
+
+**Legacy Support**: The uninstaller can remove old versions installed before the update system existed, including:
+- Old log files in `/home/mesh/`, `/home/pi/`, etc.
+- Old service files with hardcoded paths
+- Orphaned thermal heater processes
+
+This ensures a clean removal regardless of which version you installed.
 
 ## Contributing
 
