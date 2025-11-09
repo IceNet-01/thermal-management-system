@@ -23,6 +23,38 @@ This thermal management system automatically monitors ambient temperature and us
 
 ## Quick Start
 
+### System Purge (Before Fresh Install)
+
+If you're reinstalling or want to ensure a completely clean system, use the purge tool first:
+
+```bash
+# Download the purge tool (can be run from anywhere)
+curl -O https://raw.githubusercontent.com/IceNet-01/thermal-management-system/main/purge.sh
+chmod +x purge.sh
+
+# See what would be removed (dry run)
+./purge.sh --dry-run
+
+# Interactive mode (asks before removing each item)
+./purge.sh
+
+# Automatic mode (removes everything found)
+./purge.sh --auto
+```
+
+The purge tool performs a comprehensive system-wide cleanup:
+- ✓ Searches entire filesystem for thermal management installations
+- ✓ Removes all services, logs, configs, and stray files
+- ✓ Works from any location (doesn't need to be in install directory)
+- ✓ Three modes: dry-run, interactive, automatic
+- ✓ Perfect for preparing system before fresh install
+
+**When to use:**
+- Before reinstalling after a failed installation
+- When upgrading from a very old version
+- When you have multiple installations and want to start fresh
+- When moving from a manual installation to the new installer
+
 ### One-Command Installation
 
 ```bash
@@ -269,6 +301,7 @@ thermal-management-system/
 ├── install.sh                        # 🆕 Easy installation script (ONE COMMAND!)
 ├── update.sh                         # 🆕 Easy update script (pull & restart)
 ├── uninstall.sh                      # 🆕 Complete uninstaller (handles old versions)
+├── purge.sh                          # 🆕 System-wide cleanup (before fresh install)
 ├── diagnose.sh                       # 🆕 Diagnostic tool (troubleshooting)
 ├── thermal_manager.py                # Main service daemon
 ├── thermal_dashboard.py              # GUI dashboard (Textual)
@@ -321,6 +354,30 @@ The diagnostic tool checks:
 - Service status and logs
 - File permissions
 - Installation completeness
+
+### Clean Install After Issues
+
+If you're having persistent issues, use the purge tool to completely clean your system before reinstalling:
+
+```bash
+# From anywhere on your system:
+./purge.sh --dry-run    # See what would be removed
+./purge.sh              # Interactive cleanup
+./purge.sh --auto       # Automatic cleanup
+
+# Then do a fresh install:
+git clone https://github.com/IceNet-01/thermal-management-system.git
+cd thermal-management-system
+./install.sh
+```
+
+The purge tool removes:
+- All installation directories (any location)
+- All thermal_manager.py files
+- All service files and configurations
+- All log files
+- Git repositories and downloads
+- Running processes
 
 ### Common Issues
 
