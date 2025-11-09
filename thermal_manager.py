@@ -74,8 +74,8 @@ def check_manual_override():
                     return True, True
                 elif command == "HEATING_OFF":
                     return True, False
-    except:
-        pass
+    except Exception as e:
+        log(f"WARNING: Error reading override file: {e}")
     return False, False
 
 
