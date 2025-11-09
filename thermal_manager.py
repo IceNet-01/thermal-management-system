@@ -28,10 +28,15 @@ def log(message):
     log_msg = f"[{timestamp}] {message}"
     print(log_msg)
     try:
+        # Ensure log directory exists
+        log_dir = os.path.dirname(LOG_FILE)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, mode=0o755, exist_ok=True)
+
         with open(LOG_FILE, 'a') as f:
             f.write(log_msg + "\n")
     except Exception as e:
-        print(f"Warning: Could not write to log file: {e}")
+        print(f"Warning: Could not write to log file {LOG_FILE}: {e}")
 
 
 def get_ambient_temp():
@@ -127,7 +132,21 @@ def signal_handler(signum, frame):
 def main():
     """Main monitoring loop"""
     log("=== Thermal Manager Starting ===")
+    log(f"Python version: {sys.version}")
+    log(f"Log file: {LOG_FILE}")
     log(f"Config: Min temp={TEMP_MIN_C}°C, Target={TEMP_TARGET_C}°C, CPU usage={CPU_USAGE*100}%")
+
+    # Check if we can read temperature sensors
+    test_temp, test_sensor = get_ambient_temp()
+    if test_temp is None:
+        log("ERROR: Cannot read temperature sensors!")
+        log("Please check:")
+        log("  1. This service is running as root (required for sensor access)")
+        log("  2. Thermal sensors exist at /sys/class/thermal/thermal_zone*/temp")
+        log("  3. Permissions allow reading thermal sensor files")
+        # Don't exit - continue and show error in main loop
+    else:
+        log(f"Temperature sensor check OK: {test_temp}°C from {test_sensor}")
 
     # Setup signal handlers
     signal.signal(signal.SIGINT, signal_handler)

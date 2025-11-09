@@ -43,26 +43,39 @@ fi
 echo ""
 echo -e "${GREEN}[2/7]${NC} Installing Python dependencies..."
 
-# Install textual for dashboard
-if ! python3 -c "import textual" 2>/dev/null; then
-    echo -e "${YELLOW}  Installing textual (for GUI dashboard)...${NC}"
-    pip3 install textual --break-system-packages 2>/dev/null || \
-    pip3 install textual --user 2>/dev/null || \
-    sudo pip3 install textual
-    echo -e "${GREEN}  ✓ textual installed${NC}"
+# Install textual for dashboard (MUST be system-wide since service runs as root)
+echo -e "${YELLOW}  Installing textual system-wide (for GUI dashboard)...${NC}"
+if sudo python3 -c "import textual" 2>/dev/null; then
+    echo -e "${GREEN}  ✓ textual already installed (system-wide)${NC}"
 else
-    echo -e "${GREEN}  ✓ textual already installed${NC}"
+    # Try different installation methods for different distros
+    if sudo pip3 install textual --break-system-packages 2>/dev/null; then
+        echo -e "${GREEN}  ✓ textual installed (break-system-packages)${NC}"
+    elif sudo pip3 install textual 2>/dev/null; then
+        echo -e "${GREEN}  ✓ textual installed (standard)${NC}"
+    else
+        echo -e "${RED}  ✗ Failed to install textual${NC}"
+        echo -e "${YELLOW}  Dashboard may not work, but core service will function${NC}"
+    fi
+fi
+
+# Verify textual is accessible to root
+if ! sudo python3 -c "import textual" 2>/dev/null; then
+    echo -e "${YELLOW}  ⚠ Warning: textual not accessible to root user${NC}"
 fi
 
 # Install numpy for ambient temperature estimation (optional)
-if ! python3 -c "import numpy" 2>/dev/null; then
-    echo -e "${YELLOW}  Installing numpy (for ambient temp estimation)...${NC}"
-    pip3 install numpy --break-system-packages 2>/dev/null || \
-    pip3 install numpy --user 2>/dev/null || \
-    sudo pip3 install numpy || true
-    echo -e "${GREEN}  ✓ numpy installed (optional feature)${NC}"
+echo -e "${YELLOW}  Installing numpy system-wide (for ambient temp estimation)...${NC}"
+if sudo python3 -c "import numpy" 2>/dev/null; then
+    echo -e "${GREEN}  ✓ numpy already installed (system-wide)${NC}"
 else
-    echo -e "${GREEN}  ✓ numpy already installed${NC}"
+    if sudo pip3 install numpy --break-system-packages 2>/dev/null; then
+        echo -e "${GREEN}  ✓ numpy installed (break-system-packages)${NC}"
+    elif sudo pip3 install numpy 2>/dev/null; then
+        echo -e "${GREEN}  ✓ numpy installed (standard)${NC}"
+    else
+        echo -e "${YELLOW}  ⚠ numpy installation failed (optional, ambient temp estimation won't work)${NC}"
+    fi
 fi
 
 echo ""
@@ -128,10 +141,53 @@ sleep 2
 
 echo ""
 echo -e "${GREEN}[7/7]${NC} Verifying installation..."
+
+# Check if service is active
 if sudo systemctl is-active --quiet ${SERVICE_NAME}.service; then
     echo -e "${GREEN}✓ Service is running!${NC}"
+
+    # Additional health checks
+    echo ""
+    echo -e "${BLUE}Running health checks...${NC}"
+
+    # Check if log file is being written
+    sleep 2
+    if [ -f "$LOG_FILE" ]; then
+        echo -e "${GREEN}  ✓ Log file created: ${LOG_FILE}${NC}"
+        echo -e "${BLUE}  Recent log entries:${NC}"
+        sudo tail -3 "$LOG_FILE" | sed 's/^/    /'
+    else
+        echo -e "${YELLOW}  ⚠ Log file not yet created (may take a moment)${NC}"
+    fi
+
+    # Check for errors in systemd journal
+    if sudo journalctl -u ${SERVICE_NAME}.service --since "30 seconds ago" | grep -i error >/dev/null 2>&1; then
+        echo -e "${YELLOW}  ⚠ Errors detected in service logs${NC}"
+        echo -e "${YELLOW}    Run: sudo journalctl -u ${SERVICE_NAME} -n 50${NC}"
+    else
+        echo -e "${GREEN}  ✓ No errors in service logs${NC}"
+    fi
+
 else
-    echo -e "${RED}✗ Service failed to start. Check logs with: sudo journalctl -u ${SERVICE_NAME} -n 50${NC}"
+    echo -e "${RED}✗ Service failed to start${NC}"
+    echo ""
+    echo -e "${YELLOW}Diagnostics:${NC}"
+
+    # Show service status
+    echo -e "${BLUE}Service status:${NC}"
+    sudo systemctl status ${SERVICE_NAME}.service --no-pager -l | head -20 | sed 's/^/  /'
+
+    echo ""
+    echo -e "${BLUE}Recent logs:${NC}"
+    sudo journalctl -u ${SERVICE_NAME}.service -n 20 --no-pager | sed 's/^/  /'
+
+    echo ""
+    echo -e "${RED}Installation incomplete. Please check the errors above.${NC}"
+    echo -e "${YELLOW}Common issues:${NC}"
+    echo -e "  - Python packages not installed system-wide"
+    echo -e "  - Thermal sensors not accessible"
+    echo -e "  - Permission issues"
+    echo ""
     exit 1
 fi
 
