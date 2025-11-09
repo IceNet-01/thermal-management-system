@@ -259,7 +259,8 @@ class ThermalDashboard(App):
         status_display.heating_status = status['heating']
         status_display.service_status = status['service']
         status_display.uptime = status['uptime']
-        status_display.manual_override = os.path.exists(self.override_file)
+        # Check if manual workers are actually running
+        status_display.manual_override = len(self.manual_workers) > 0 and any(p.is_alive() for p in self.manual_workers)
 
     def get_temperatures(self) -> dict:
         """Read current temperatures"""
@@ -417,12 +418,18 @@ class ThermalDashboard(App):
                         p.terminate()
                     p.join(timeout=1)
 
-                self.manual_workers = []
+                # Clear the list
+                self.manual_workers.clear()
 
                 log_widget = self.query_one("#logs", Log)
                 log_widget.write_line(f"[green]>>> Stopped manual heating workers[/]")
+
+            # Also clean up any dead workers
+            self.manual_workers = [p for p in self.manual_workers if p.is_alive()]
         except Exception as e:
             print(f"Error stopping manual heating: {e}")
+            # Make sure list is cleared even on error
+            self.manual_workers = []
 
     def load_config(self) -> None:
         """Load temperature configuration from file"""
