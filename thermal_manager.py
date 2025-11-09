@@ -12,12 +12,11 @@ import sys
 from datetime import datetime
 
 # Configuration
-TEMP_MIN_C = 0          # Start heating below 32°F (0°C)
-TEMP_TARGET_C = 5       # Stop heating above 41°F (5°C) - hysteresis
 CHECK_INTERVAL = 10     # Check temperature every 10 seconds
 CPU_USAGE = 0.70        # Use 70% of available CPU for heating (leave 30% headroom)
 LOG_FILE = os.environ.get("LOG_FILE", "/var/log/thermal-manager/thermal_manager.log")
 OVERRIDE_FILE = "/tmp/thermal_override"  # Manual override file
+CONFIG_FILE = "/tmp/thermal_config"      # Temperature configuration file
 
 # Global flag for worker processes
 heating_active = multiprocessing.Value('i', 0)
@@ -38,6 +37,29 @@ def log(message):
             f.write(log_msg + "\n")
     except Exception as e:
         print(f"Warning: Could not write to log file {LOG_FILE}: {e}")
+
+
+def load_temp_config():
+    """Load temperature configuration from file
+    Returns: (temp_min, temp_target)
+    """
+    temp_min = 0    # Default: start heating below 0°C
+    temp_target = 5  # Default: stop heating above 5°C
+
+    try:
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r') as f:
+                lines = f.readlines()
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("TEMP_MIN="):
+                        temp_min = int(line.split("=")[1])
+                    elif line.startswith("TEMP_TARGET="):
+                        temp_target = int(line.split("=")[1])
+    except Exception as e:
+        pass  # Use defaults if config can't be read
+
+    return temp_min, temp_target
 
 
 def check_manual_override():
@@ -152,7 +174,11 @@ def main():
     log("=== Thermal Manager Starting ===")
     log(f"Python version: {sys.version}")
     log(f"Log file: {LOG_FILE}")
-    log(f"Config: Min temp={TEMP_MIN_C}°C, Target={TEMP_TARGET_C}°C, CPU usage={CPU_USAGE*100}%")
+
+    # Load temperature configuration
+    temp_min, temp_target = load_temp_config()
+    log(f"Config: Min temp={temp_min}°C, Target={temp_target}°C, CPU usage={CPU_USAGE*100}%")
+    last_config_check = time.time()
 
     # Check if we can read temperature sensors
     test_temp, test_sensor = get_ambient_temp()
@@ -192,6 +218,14 @@ def main():
 
     try:
         while True:
+            # Reload config every 30 seconds to pick up changes
+            if time.time() - last_config_check > 30:
+                new_temp_min, new_temp_target = load_temp_config()
+                if new_temp_min != temp_min or new_temp_target != temp_target:
+                    temp_min, temp_target = new_temp_min, new_temp_target
+                    log(f"CONFIG UPDATED: Min={temp_min}°C, Target={temp_target}°C")
+                last_config_check = time.time()
+
             temp, sensor = get_ambient_temp()
 
             if temp is None:
@@ -225,17 +259,17 @@ def main():
                     log(f"{status}: Temp={temp:.1f}°C ({temp_f:.1f}°F) [{sensor_name}]")
             else:
                 # Normal temperature-based operation
-                if temp < TEMP_MIN_C and not currently_heating:
+                if temp < temp_min and not currently_heating:
                     # Too cold - start heating
                     heating_active.value = 1
                     currently_heating = True
-                    log(f"HEATING ON: Temp={temp:.1f}°C ({temp_f:.1f}°F) - Below {TEMP_MIN_C}°C")
+                    log(f"HEATING ON: Temp={temp:.1f}°C ({temp_f:.1f}°F) - Below {temp_min}°C")
 
-                elif temp >= TEMP_TARGET_C and currently_heating:
+                elif temp >= temp_target and currently_heating:
                     # Warm enough - stop heating
                     heating_active.value = 0
                     currently_heating = False
-                    log(f"HEATING OFF: Temp={temp:.1f}°C ({temp_f:.1f}°F) - Reached {TEMP_TARGET_C}°C")
+                    log(f"HEATING OFF: Temp={temp:.1f}°C ({temp_f:.1f}°F) - Reached {temp_target}°C")
 
                 else:
                     # Status unchanged - log periodically
