@@ -10,7 +10,7 @@ import subprocess
 from datetime import datetime
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
-from textual.widgets import Header, Footer, Static, Button, Label, DataTable, Log
+from textual.widgets import Header, Footer, Static, Button, Label, DataTable, Log, Input
 from textual.reactive import reactive
 from textual import work
 from textual.timer import Timer
@@ -105,10 +105,22 @@ class ThermalDashboard(App):
         margin: 1;
     }
 
+    #config {
+        height: auto;
+        padding: 1;
+        border: solid cyan;
+        margin: 1;
+    }
+
     #logs {
         height: 1fr;
         border: solid green;
         margin: 1;
+    }
+
+    Input {
+        margin: 0 1;
+        width: 100%;
     }
 
     Button {
@@ -149,9 +161,15 @@ class ThermalDashboard(App):
     def __init__(self):
         super().__init__()
         self.override_file = "/tmp/thermal_override"
+        self.config_file = "/tmp/thermal_config"
         self.start_time = time.time()
         # Use environment variable or fallback to default location
         self.log_file = os.environ.get("LOG_FILE", "/var/log/thermal-manager/thermal_manager.log")
+
+        # Load current config or use defaults
+        self.temp_min = 0
+        self.temp_target = 5
+        self.load_config()
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -164,11 +182,18 @@ class ThermalDashboard(App):
 
                 with Vertical(id="controls"):
                     yield Label("[bold cyan]═══ MANUAL CONTROLS ═══[/]")
-                    yield Button("🔥 FORCE HEATING ON", id="heat_on", classes="heat_on")
-                    yield Button("❄️  FORCE HEATING OFF", id="heat_off", classes="heat_off")
-                    yield Button("🔓 CLEAR OVERRIDE", id="clear_override", classes="service")
+                    yield Button("🔥 MANUAL ON (Override)", id="heat_on", classes="heat_on")
+                    yield Button("❄️  MANUAL OFF (Auto Mode)", id="heat_off", classes="heat_off")
                     yield Button("🔄 RESTART SERVICE", id="restart", classes="service")
                     yield Button("📊 VIEW FULL LOGS", id="view_logs", classes="service")
+
+                with Vertical(id="config"):
+                    yield Label("[bold cyan]═══ TEMPERATURE CONFIG ═══[/]")
+                    yield Label("Start Heating Below (°C):")
+                    yield Input(placeholder="0", id="temp_min", value=str(self.temp_min))
+                    yield Label("Stop Heating Above (°C):")
+                    yield Input(placeholder="5", id="temp_target", value=str(self.temp_target))
+                    yield Button("💾 SAVE CONFIG", id="save_config", classes="service")
 
             with Vertical(id="right_panel"):
                 yield Label("[bold cyan]═══════════ RECENT ACTIVITY ═══════════[/]", id="log_header")
@@ -227,17 +252,19 @@ class ThermalDashboard(App):
             'uptime': '--:--:--'
         }
 
-        # Check if heating is active by looking at logs
+        # Check if heating is active by looking at logs (use sudo to read)
         try:
-            with open(self.log_file, 'r') as f:
-                lines = f.readlines()
-                if lines:
-                    # Check last few lines for most recent status
-                    for line in reversed(lines[-10:]):
+            result = subprocess.run(['sudo', 'tail', '-10', self.log_file],
+                                  capture_output=True, text=True, timeout=2)
+            if result.returncode == 0 and result.stdout:
+                lines = result.stdout.split('\n')
+                # Check last few lines for most recent status
+                for line in reversed(lines):
+                    if line.strip():
                         if 'HEATING ON:' in line or 'HEATING:' in line:
                             status['heating'] = 'HEATING'
                             break
-                        elif 'HEATING OFF:' in line or 'IDLE:' in line:
+                        elif 'HEATING OFF:' in line or 'IDLE:' in line or 'IDLE (' in line:
                             status['heating'] = 'IDLE'
                             break
         except Exception as e:
@@ -258,7 +285,7 @@ class ThermalDashboard(App):
                 status['service'] = 'FAILED'
             else:
                 status['service'] = svc_status.upper()
-        except:
+        except Exception as e:
             status['service'] = 'UNKNOWN'
 
         # Calculate uptime
@@ -300,15 +327,12 @@ class ThermalDashboard(App):
 
         if button_id == "heat_on":
             self.force_heating_on()
-            log_widget.write_line(f"[red]>>> MANUAL: Forced heating ON at {datetime.now().strftime('%H:%M:%S')}[/]")
+            log_widget.write_line(f"[red]>>> MANUAL ON: Heating forced ON (auto disabled) at {datetime.now().strftime('%H:%M:%S')}[/]")
 
         elif button_id == "heat_off":
-            self.force_heating_off()
-            log_widget.write_line(f"[blue]>>> MANUAL: Forced heating OFF at {datetime.now().strftime('%H:%M:%S')}[/]")
-
-        elif button_id == "clear_override":
+            # Manual OFF returns to auto mode (clears override)
             self.clear_override()
-            log_widget.write_line(f"[green]>>> MANUAL: Override cleared - returning to auto mode at {datetime.now().strftime('%H:%M:%S')}[/]")
+            log_widget.write_line(f"[blue]>>> MANUAL OFF: Returning to AUTO mode at {datetime.now().strftime('%H:%M:%S')}[/]")
 
         elif button_id == "restart":
             self.restart_service()
@@ -317,19 +341,22 @@ class ThermalDashboard(App):
         elif button_id == "view_logs":
             self.action_view_full_logs()
 
+        elif button_id == "save_config":
+            if self.save_config_from_inputs():
+                log_widget.write_line(f"[green]>>> CONFIG: Temperature thresholds saved at {datetime.now().strftime('%H:%M:%S')}[/]")
+                log_widget.write_line(f"[green]    Start heating below: {self.temp_min}°C, Stop above: {self.temp_target}°C[/]")
+            else:
+                log_widget.write_line(f"[red]>>> CONFIG: Failed to save - check input values[/]")
+
     def force_heating_on(self) -> None:
         """Force heating on (manual override)"""
-        # Create override file to signal thermal manager
-        with open(self.override_file, 'w') as f:
-            f.write("HEATING_ON")
-
-        # Could also directly modify the thermal manager or send signal
-        # For now, we'll just create a marker file
-
-    def force_heating_off(self) -> None:
-        """Force heating off (manual override)"""
-        with open(self.override_file, 'w') as f:
-            f.write("HEATING_OFF")
+        try:
+            with open(self.override_file, 'w') as f:
+                f.write("HEATING_ON")
+            # Make sure it's world-readable so the service can read it
+            os.chmod(self.override_file, 0o644)
+        except Exception as e:
+            print(f"Error creating override file: {e}")
 
     def clear_override(self) -> None:
         """Clear manual override - return to automatic mode"""
@@ -338,6 +365,54 @@ class ThermalDashboard(App):
                 os.remove(self.override_file)
         except:
             pass
+
+    def load_config(self) -> None:
+        """Load temperature configuration from file"""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        line = line.strip()
+                        if line.startswith("TEMP_MIN="):
+                            self.temp_min = int(line.split("=")[1])
+                        elif line.startswith("TEMP_TARGET="):
+                            self.temp_target = int(line.split("=")[1])
+        except Exception as e:
+            print(f"Error loading config: {e}")
+            # Use defaults
+            self.temp_min = 0
+            self.temp_target = 5
+
+    def save_config_from_inputs(self) -> bool:
+        """Save temperature configuration from input widgets"""
+        try:
+            # Get input values
+            temp_min_input = self.query_one("#temp_min", Input)
+            temp_target_input = self.query_one("#temp_target", Input)
+
+            # Validate inputs
+            temp_min = int(temp_min_input.value)
+            temp_target = int(temp_target_input.value)
+
+            if temp_target <= temp_min:
+                return False  # Invalid: target must be higher than min
+
+            # Save to instance
+            self.temp_min = temp_min
+            self.temp_target = temp_target
+
+            # Write config file
+            with open(self.config_file, 'w') as f:
+                f.write(f"TEMP_MIN={temp_min}\n")
+                f.write(f"TEMP_TARGET={temp_target}\n")
+
+            # Make it world-readable so the service can read it
+            os.chmod(self.config_file, 0o644)
+            return True
+        except Exception as e:
+            print(f"Error saving config: {e}")
+            return False
 
     def restart_service(self) -> None:
         """Restart the thermal manager service"""
