@@ -33,8 +33,15 @@ def log(message):
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir, mode=0o755, exist_ok=True)
 
+        # Write to log file
         with open(LOG_FILE, 'a') as f:
             f.write(log_msg + "\n")
+
+        # Make log file world-readable so dashboard can read it without sudo
+        try:
+            os.chmod(LOG_FILE, 0o644)
+        except:
+            pass
     except Exception as e:
         print(f"Warning: Could not write to log file {LOG_FILE}: {e}")
 

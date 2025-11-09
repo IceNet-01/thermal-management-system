@@ -279,31 +279,6 @@ class ThermalDashboard(App):
 
         return temps
 
-    def run_sudo_command(self, command):
-        """Run a command with sudo/pkexec, handling password prompts
-        Args:
-            command: List of command arguments (without sudo/pkexec prefix)
-        Returns:
-            subprocess.CompletedProcess result or None on failure
-        """
-        # Try pkexec first (GUI password prompt)
-        if os.path.exists('/usr/bin/pkexec'):
-            try:
-                result = subprocess.run(['pkexec'] + command,
-                                      capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    return result
-            except:
-                pass
-
-        # Fall back to sudo (may prompt in terminal)
-        try:
-            result = subprocess.run(['sudo'] + command,
-                                  capture_output=True, text=True, timeout=10)
-            return result
-        except Exception as e:
-            return None
-
     def get_status(self) -> dict:
         """Get system status"""
         status = {
@@ -312,38 +287,38 @@ class ThermalDashboard(App):
             'uptime': '--:--:--'
         }
 
-        # Check if heating is active by looking at logs
+        # Check if heating is active by looking at logs (try without sudo first)
         try:
-            result = self.run_sudo_command(['tail', '-10', self.log_file])
-            if result and result.returncode == 0 and result.stdout:
-                lines = result.stdout.split('\n')
-                # Check last few lines for most recent status
-                for line in reversed(lines):
-                    if line.strip():
-                        if 'HEATING ON:' in line or 'HEATING:' in line:
-                            status['heating'] = 'HEATING'
-                            break
-                        elif 'HEATING OFF:' in line or 'IDLE:' in line or 'IDLE (' in line:
-                            status['heating'] = 'IDLE'
-                            break
+            # Try to read log file directly (works if readable)
+            if os.path.exists(self.log_file) and os.access(self.log_file, os.R_OK):
+                with open(self.log_file, 'r') as f:
+                    lines = f.readlines()[-10:]  # Last 10 lines
+                    for line in reversed(lines):
+                        if line.strip():
+                            if 'HEATING ON:' in line or 'HEATING:' in line:
+                                status['heating'] = 'HEATING'
+                                break
+                            elif 'HEATING OFF:' in line or 'IDLE:' in line or 'IDLE (' in line:
+                                status['heating'] = 'IDLE'
+                                break
         except Exception as e:
             # If log file doesn't exist or can't be read, status stays UNKNOWN
             pass
 
-        # Check service status
+        # Check service status (try without sudo)
         try:
-            result = self.run_sudo_command(['systemctl', 'is-active', 'thermal-manager.service'])
-            if result:
-                svc_status = result.stdout.strip()
-                # Make it more readable
-                if svc_status == 'active':
-                    status['service'] = 'ACTIVE'
-                elif svc_status == 'inactive':
-                    status['service'] = 'INACTIVE'
-                elif svc_status == 'failed':
-                    status['service'] = 'FAILED'
-                else:
-                    status['service'] = svc_status.upper()
+            result = subprocess.run(['systemctl', 'is-active', 'thermal-manager.service'],
+                                  capture_output=True, text=True, timeout=2)
+            svc_status = result.stdout.strip()
+            # Make it more readable
+            if svc_status == 'active':
+                status['service'] = 'ACTIVE'
+            elif svc_status == 'inactive':
+                status['service'] = 'INACTIVE'
+            elif svc_status == 'failed':
+                status['service'] = 'FAILED'
+            else:
+                status['service'] = svc_status.upper()
         except Exception as e:
             status['service'] = 'UNKNOWN'
 
@@ -361,14 +336,15 @@ class ThermalDashboard(App):
         log_widget = self.query_one("#logs", Log)
 
         try:
-            # Try to read log file with sudo
-            result = self.run_sudo_command(['tail', '-50', self.log_file])
-            if result and result.returncode == 0 and result.stdout:
-                for line in result.stdout.split('\n'):
-                    if line.strip():
-                        log_widget.write_line(line.strip())
+            # Try to read log file directly (works if readable)
+            if os.path.exists(self.log_file) and os.access(self.log_file, os.R_OK):
+                with open(self.log_file, 'r') as f:
+                    lines = f.readlines()[-50:]  # Last 50 lines
+                    for line in lines:
+                        if line.strip():
+                            log_widget.write_line(line.strip())
             else:
-                log_widget.write_line("[yellow]No logs available yet[/]")
+                log_widget.write_line("[yellow]No logs available (file not readable without sudo)[/]")
         except Exception as e:
             log_widget.write_line(f"[yellow]Cannot read logs: {str(e)}[/]")
 
@@ -497,14 +473,16 @@ class ThermalDashboard(App):
             return False
 
     def restart_service(self) -> None:
-        """Restart the thermal manager service"""
+        """Restart the thermal manager service (prompts for sudo password in terminal)"""
         log_widget = self.query_one("#logs", Log)
         try:
-            result = self.run_sudo_command(['systemctl', 'restart', 'thermal-manager.service'])
-            if result and result.returncode == 0:
+            # Use sudo (will prompt for password in terminal)
+            result = subprocess.run(['sudo', 'systemctl', 'restart', 'thermal-manager.service'],
+                                  capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
                 log_widget.write_line(f"[green]>>> SERVICE: Restart successful at {datetime.now().strftime('%H:%M:%S')}[/]")
             else:
-                error_msg = result.stderr if result else "Unknown error"
+                error_msg = result.stderr if result.stderr else "Check terminal for password prompt"
                 log_widget.write_line(f"[red]>>> SERVICE: Restart failed - {error_msg}[/]")
         except Exception as e:
             log_widget.write_line(f"[red]>>> SERVICE: Restart failed - {str(e)}[/]")
