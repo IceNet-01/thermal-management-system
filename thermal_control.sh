@@ -50,15 +50,15 @@ case "$1" in
         ;;
 
     uninstall)
-        echo "Uninstalling thermal manager service..."
-        sudo systemctl stop ${SERVICE_NAME}.service
-        sudo systemctl disable ${SERVICE_NAME}.service
-        sudo rm -f /etc/systemd/system/${SERVICE_NAME}.service
-        sudo systemctl daemon-reload
-        echo "✓ Service uninstalled"
+        echo "⚠ Please use ./uninstall.sh for complete removal instead."
+        echo "  The uninstall.sh script handles:"
+        echo "    - Service removal"
+        echo "    - Log cleanup (with confirmation)"
+        echo "    - Old installation cleanup"
+        echo "    - Optional directory removal"
         echo ""
-        echo "Note: Log files in /var/log/thermal-manager/ were not removed."
-        echo "      Remove manually if desired: sudo rm -rf /var/log/thermal-manager/"
+        echo "  Run: ./uninstall.sh"
+        exit 1
         ;;
 
     test)
@@ -68,7 +68,7 @@ case "$1" in
 
     *)
         echo "Thermal Manager Control"
-        echo "Usage: $0 {start|stop|restart|status|logs|follow|uninstall|test}"
+        echo "Usage: $0 {start|stop|restart|status|logs|follow|test}"
         echo ""
         echo "  start     - Start the service"
         echo "  stop      - Stop the service"
@@ -76,11 +76,11 @@ case "$1" in
         echo "  status    - Check service status"
         echo "  logs      - View recent logs"
         echo "  follow    - Follow logs in real-time"
-        echo "  uninstall - Remove the service"
         echo "  test      - Run in foreground for testing"
         echo ""
         echo "For installation, use: ./install.sh"
         echo "For updates, use: ./update.sh"
+        echo "For removal, use: ./uninstall.sh"
         exit 1
         ;;
 esac
