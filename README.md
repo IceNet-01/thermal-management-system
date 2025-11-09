@@ -23,24 +23,36 @@ This thermal management system automatically monitors ambient temperature and us
 
 ## Quick Start
 
-### Installation
+### One-Command Installation
 
 ```bash
 # Clone the repository
 git clone https://github.com/IceNet-01/thermal-management-system.git
 cd thermal-management-system
 
-# Install dependencies
-sudo apt-get update
-sudo apt-get install -y python3-pip
-pip3 install textual --break-system-packages
-
-# Make scripts executable
-chmod +x *.py *.sh thermal
-
-# Install and start service
-./thermal_control.sh install
+# Run the installer (handles everything automatically!)
+chmod +x install.sh && ./install.sh
 ```
+
+That's it! The installer will:
+- ✓ Install all dependencies (Python packages, etc.)
+- ✓ Set up the systemd service
+- ✓ Configure auto-start on boot
+- ✓ Start the service immediately
+- ✓ Create log directories with proper permissions
+
+### Easy Updates
+
+```bash
+# Pull latest updates and restart service
+./update.sh
+```
+
+The update script will:
+- ✓ Pull latest changes from git
+- ✓ Update dependencies if needed
+- ✓ Restart the service automatically
+- ✓ Preserve your local configuration
 
 ### Usage
 
@@ -53,6 +65,9 @@ chmod +x *.py *.sh thermal
 
 # View logs
 ./thermal_control.sh logs
+
+# Follow logs in real-time
+./thermal_control.sh follow
 
 # Restart service
 ./thermal_control.sh restart
@@ -222,11 +237,13 @@ See **[AMBIENT_TEMPERATURE_ESTIMATION.md](AMBIENT_TEMPERATURE_ESTIMATION.md)** f
 
 ```
 thermal-management-system/
+├── install.sh                        # 🆕 Easy installation script (ONE COMMAND!)
+├── update.sh                         # 🆕 Easy update script (pull & restart)
 ├── thermal_manager.py                # Main service daemon
 ├── thermal_dashboard.py              # GUI dashboard (Textual)
 ├── ambient_temp_estimator.py         # Ambient temperature estimation module
 ├── ambient_temp_example.py           # Calibration & estimation examples
-├── thermal-manager.service           # Systemd unit file
+├── thermal-manager.service           # Systemd unit file template
 ├── thermal_control.sh                # Service management script
 ├── thermal                           # Dashboard launcher
 ├── cpu_stress.py                     # Stress testing tool

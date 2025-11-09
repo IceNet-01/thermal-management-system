@@ -1,15 +1,26 @@
 [Unit]
 Description=Thermal Management Service for Cold Weather
+Documentation=https://github.com/IceNet-01/thermal-management-system
 After=network.target
 
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/python3 /home/mesh/thermal_manager.py
+# NOTE: Install script will replace INSTALL_DIR with actual path
+WorkingDirectory=INSTALL_DIR
+ExecStart=/usr/bin/python3 INSTALL_DIR/thermal_manager.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+Environment="LOG_FILE=/var/log/thermal-manager/thermal_manager.log"
 
 [Install]
 WantedBy=multi-user.target
