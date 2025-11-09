@@ -16,7 +16,7 @@ TEMP_MIN_C = 0          # Start heating below 32°F (0°C)
 TEMP_TARGET_C = 5       # Stop heating above 41°F (5°C) - hysteresis
 CHECK_INTERVAL = 10     # Check temperature every 10 seconds
 CPU_USAGE = 0.70        # Use 70% of available CPU for heating (leave 30% headroom)
-LOG_FILE = "/home/mesh/thermal_manager.log"
+LOG_FILE = os.environ.get("LOG_FILE", "/var/log/thermal-manager/thermal_manager.log")
 
 # Global flag for worker processes
 heating_active = multiprocessing.Value('i', 0)
