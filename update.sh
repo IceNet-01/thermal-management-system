@@ -53,7 +53,7 @@ if sudo systemctl is-active --quiet ${SERVICE_NAME}.service 2>/dev/null; then
 fi
 
 if [ "$CHECK_ONLY" = false ]; then
-    echo -e "${GREEN}[1/5]${NC} Checking for local changes..."
+    echo -e "${GREEN}[1/6]${NC} Checking for local changes..."
 else
     echo -e "${GREEN}[1/2]${NC} Checking for local changes..."
 fi
@@ -84,7 +84,7 @@ fi
 
 echo ""
 if [ "$CHECK_ONLY" = false ]; then
-    echo -e "${GREEN}[2/5]${NC} Fetching latest changes from remote..."
+    echo -e "${GREEN}[2/6]${NC} Fetching latest changes from remote..."
 else
     echo -e "${GREEN}[2/2]${NC} Fetching latest changes from remote..."
 fi
@@ -148,7 +148,7 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}[3/5]${NC} Pulling updates..."
+echo -e "${GREEN}[3/6]${NC} Pulling updates..."
 if git pull origin $(git branch --show-current); then
     echo -e "${GREEN}✓ Updates pulled successfully${NC}"
 else
@@ -158,7 +158,7 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}[4/5]${NC} Checking for new dependencies..."
+echo -e "${GREEN}[4/6]${NC} Checking for new dependencies..."
 
 # Check if we need to update Python packages
 if [ -f "${SCRIPT_DIR}/requirements.txt" ]; then
@@ -177,7 +177,29 @@ fi
 echo -e "${GREEN}✓ Dependencies up to date${NC}"
 
 echo ""
-echo -e "${GREEN}[5/5]${NC} Restarting service..."
+echo -e "${GREEN}[5/6]${NC} Updating command symlinks..."
+
+# Ensure symlinks in /usr/local/bin point to correct location
+echo -e "${YELLOW}  Refreshing command symlinks...${NC}"
+
+# thermal - GUI dashboard
+sudo ln -sf "${SCRIPT_DIR}/thermal" /usr/local/bin/thermal
+
+# thermal-control - service management
+sudo ln -sf "${SCRIPT_DIR}/thermal_control.sh" /usr/local/bin/thermal-control
+
+# thermal-update - update script
+sudo ln -sf "${SCRIPT_DIR}/update.sh" /usr/local/bin/thermal-update
+
+# thermal-diagnose - diagnostic tool (if it exists)
+if [ -f "${SCRIPT_DIR}/diagnose.sh" ]; then
+    sudo ln -sf "${SCRIPT_DIR}/diagnose.sh" /usr/local/bin/thermal-diagnose
+fi
+
+echo -e "${GREEN}✓ Symlinks updated${NC}"
+
+echo ""
+echo -e "${GREEN}[6/6]${NC} Restarting service..."
 
 # Check if service exists and restart it
 if sudo systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
@@ -235,7 +257,7 @@ EOF
         fi
     else
         echo -e "${BLUE}ℹ Service was not running, not starting it${NC}"
-        echo "  Start with: ./thermal_control.sh start"
+        echo "  Start with: thermal-control start"
     fi
 else
     echo -e "${YELLOW}⚠ Service not installed${NC}"
@@ -255,7 +277,8 @@ if git describe --tags --always &>/dev/null; then
 fi
 echo -e "${BLUE}Latest commit:${NC} $(git log -1 --pretty=format:'%h - %s (%ar)')"
 echo ""
-echo -e "${YELLOW}Quick Status Check:${NC}"
-echo -e "  ${GREEN}./thermal_control.sh status${NC}   - Check service status"
-echo -e "  ${GREEN}./thermal${NC}                      - Launch GUI dashboard"
+echo -e "${YELLOW}Quick Commands (run from anywhere):${NC}"
+echo -e "  ${GREEN}thermal${NC}                - Launch GUI dashboard"
+echo -e "  ${GREEN}thermal-control status${NC} - Check service status"
+echo -e "  ${GREEN}thermal-update --check${NC} - Check for new updates"
 echo ""
