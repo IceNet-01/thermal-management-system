@@ -71,9 +71,14 @@ case "$1" in
         "${SCRIPT_DIR}/diagnose.sh"
         ;;
 
+    check)
+        echo "Checking for updates..."
+        "${SCRIPT_DIR}/update.sh" --check
+        ;;
+
     *)
         echo "Thermal Manager Control"
-        echo "Usage: $0 {start|stop|restart|status|logs|follow|test|diagnose}"
+        echo "Usage: $0 {start|stop|restart|status|logs|follow|test|diagnose|check}"
         echo ""
         echo "  start     - Start the service"
         echo "  stop      - Stop the service"
@@ -83,6 +88,7 @@ case "$1" in
         echo "  follow    - Follow logs in real-time"
         echo "  test      - Run in foreground for testing"
         echo "  diagnose  - Run system diagnostics"
+        echo "  check     - Check for available updates"
         echo ""
         echo "For installation, use: ./install.sh"
         echo "For updates, use: ./update.sh"

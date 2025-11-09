@@ -3,6 +3,10 @@
 # Thermal Management System - Complete Uninstaller
 # Removes both old (pre-update) and new installations
 #
+# Usage:
+#   ./uninstall.sh        - Interactive uninstall with prompts
+#   ./uninstall.sh --full - Complete removal without prompts (removes everything)
+#
 
 set -e  # Exit on error
 
@@ -16,26 +20,51 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="thermal-manager"
 
+# Parse arguments
+FULL_REMOVE=false
+if [ "$1" = "--full" ] || [ "$1" = "-f" ]; then
+    FULL_REMOVE=true
+fi
+
 echo -e "${RED}╔════════════════════════════════════════════════════════╗${NC}"
 echo -e "${RED}║   Thermal Management System - Uninstaller             ║${NC}"
 echo -e "${RED}╔════════════════════════════════════════════════════════╗${NC}"
 echo ""
 
-echo -e "${YELLOW}⚠ WARNING: This will completely remove the thermal management system${NC}"
-echo ""
-echo "This uninstaller will:"
-echo "  - Stop and disable the systemd service"
-echo "  - Remove service files"
-echo "  - Clean up old installations (pre-update versions)"
-echo "  - Optionally remove log files"
-echo "  - Optionally remove the installation directory"
-echo ""
+if [ "$FULL_REMOVE" = true ]; then
+    echo -e "${YELLOW}⚠ FULL REMOVAL MODE - All files will be deleted without prompts${NC}"
+    echo ""
+    echo "This will remove:"
+    echo "  - Systemd service"
+    echo "  - Service files"
+    echo "  - Log files"
+    echo "  - Installation directory (including all git files)"
+    echo ""
+    read -p "Are you SURE you want to completely remove everything? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${GREEN}Uninstall cancelled${NC}"
+        exit 0
+    fi
+else
+    echo -e "${YELLOW}⚠ WARNING: This will remove the thermal management system${NC}"
+    echo ""
+    echo "This uninstaller will:"
+    echo "  - Stop and disable the systemd service"
+    echo "  - Remove service files"
+    echo "  - Clean up old installations (pre-update versions)"
+    echo "  - Optionally remove log files"
+    echo "  - Optionally remove installation directory (all files including git)"
+    echo ""
+    echo -e "${BLUE}Tip: Use './uninstall.sh --full' for complete removal without prompts${NC}"
+    echo ""
 
-read -p "Do you want to continue? (y/N): " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${GREEN}Uninstall cancelled${NC}"
-    exit 0
+    read -p "Do you want to continue? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${GREEN}Uninstall cancelled${NC}"
+        exit 0
+    fi
 fi
 
 echo ""
@@ -127,13 +156,18 @@ if [ -d "/var/log/thermal-manager" ]; then
     LOG_SIZE=$(du -sh /var/log/thermal-manager 2>/dev/null | cut -f1)
     echo -e "${BLUE}  Size: ${LOG_SIZE}${NC}"
 
-    read -p "  Remove log files? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    if [ "$FULL_REMOVE" = true ]; then
         sudo rm -rf /var/log/thermal-manager
         echo -e "${GREEN}  ✓ Log directory removed${NC}"
     else
-        echo -e "${BLUE}  ℹ Log directory preserved${NC}"
+        read -p "  Remove log files? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            sudo rm -rf /var/log/thermal-manager
+            echo -e "${GREEN}  ✓ Log directory removed${NC}"
+        else
+            echo -e "${BLUE}  ℹ Log directory preserved${NC}"
+        fi
     fi
 else
     echo -e "${BLUE}ℹ No log directory found${NC}"
@@ -158,23 +192,50 @@ echo ""
 echo -e "${GREEN}[6/6]${NC} Installation directory..."
 
 echo -e "${YELLOW}  Current directory: ${SCRIPT_DIR}${NC}"
-echo ""
-read -p "  Remove installation directory? (y/N): " -n 1 -r
-echo
 
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+# Show directory size
+DIR_SIZE=$(du -sh "$SCRIPT_DIR" 2>/dev/null | cut -f1)
+echo -e "${BLUE}  Size: ${DIR_SIZE}${NC}"
+
+# Count files
+FILE_COUNT=$(find "$SCRIPT_DIR" -type f 2>/dev/null | wc -l)
+echo -e "${BLUE}  Files: ${FILE_COUNT}${NC}"
+
+REMOVE_DIR=false
+if [ "$FULL_REMOVE" = true ]; then
+    REMOVE_DIR=true
+    echo -e "${YELLOW}  ⚠ Full removal mode - directory will be deleted${NC}"
+else
+    echo ""
+    echo -e "${YELLOW}  This includes ALL files:${NC}"
+    echo "    - Python scripts"
+    echo "    - Shell scripts"
+    echo "    - Documentation"
+    echo "    - .git directory and all git history"
+    echo "    - Any local modifications"
+    echo ""
+    read -p "  Remove installation directory? (Y/n): " -n 1 -r
+    echo
+    # Default to yes (Y/n instead of y/N)
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        REMOVE_DIR=true
+    fi
+fi
+
+if [ "$REMOVE_DIR" = true ]; then
     # Move out of the directory before removing it
     cd /tmp
 
     echo -e "${YELLOW}  ⚠ Removing ${SCRIPT_DIR}...${NC}"
     sudo rm -rf "$SCRIPT_DIR"
-    echo -e "${GREEN}  ✓ Installation directory removed${NC}"
+    echo -e "${GREEN}  ✓ Installation directory removed (all files deleted)${NC}"
     echo ""
     echo -e "${GREEN}╔════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║          Uninstall Complete! ✓                         ║${NC}"
     echo -e "${GREEN}╔════════════════════════════════════════════════════════╗${NC}"
     echo ""
     echo -e "${BLUE}The thermal management system has been completely removed.${NC}"
+    echo -e "${BLUE}All files including git repository have been deleted.${NC}"
     echo -e "${BLUE}You are now in /tmp directory.${NC}"
 else
     echo -e "${BLUE}  ℹ Installation directory preserved${NC}"
@@ -187,6 +248,7 @@ else
     echo -e "${BLUE}Installation directory preserved at: ${SCRIPT_DIR}${NC}"
     echo ""
     echo -e "${YELLOW}To reinstall, run: ./install.sh${NC}"
+    echo -e "${YELLOW}To remove directory later: rm -rf ${SCRIPT_DIR}${NC}"
 fi
 
 echo ""
@@ -194,8 +256,9 @@ echo -e "${GREEN}Summary of what was removed:${NC}"
 echo "  ✓ Systemd service (${SERVICE_NAME}.service)"
 echo "  ✓ Service configuration files"
 echo "  ✓ Old installation artifacts"
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "  ✓ Installation directory"
+if [ "$REMOVE_DIR" = true ]; then
+    echo "  ✓ Installation directory (all files including git)"
+    echo "  ✓ Log files"
 fi
 echo ""
 
